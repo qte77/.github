@@ -1,0 +1,28 @@
+title: "[Q] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got a question? Please search existing discussions and issues first.
+        For bugs, open an issue instead.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to accomplish? What have you already tried?
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version / environment
+      description: Relevant versions (project, language runtime, OS) if applicable.
+    validations:
+      required: false
