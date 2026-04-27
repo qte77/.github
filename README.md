@@ -57,28 +57,56 @@ uses: qte77/.github/.github/workflows/lint-md-links.yml@<SHA>  # bump on .github
 
 ### Scheduled monitoring (opt-in)
 
-The reusable workflow accepts a `notify_on_failure` input. Set it to `true` from a caller with a `cron` trigger to get an automated issue when scheduled lint runs fail (catches link rot on idle repos):
+The reusable workflow accepts a `notify_on_failure` input. Use a **single caller file** that handles PR-blocking and cron monitoring together — `notify_on_failure` derives from the trigger so an issue is only created on scheduled failures, never on PR failures:
 
 ```yaml
-name: Lint Monitor
+name: Lint MD and Links
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   schedule:
-    - cron: "0 0 * * 0"  # weekly Sunday midnight UTC
+    - cron: "0 0 * * 0"  # weekly Sunday 00:00 UTC
   workflow_dispatch:
 permissions:
   contents: read
   issues: write
 jobs:
-  monitor:
-    uses: qte77/.github/.github/workflows/lint-md-links.yml@main
+  lint:
+    uses: qte77/.github/.github/workflows/lint-md-links.yml@<SHA>
     with:
-      notify_on_failure: true
+      notify_on_failure: ${{ github.event_name == 'schedule' }}
     permissions:
       contents: read
       issues: write
 ```
 
-PR-blocking callers leave `notify_on_failure` unset (default `false`); no `issues: write` permission needed.
+One caller file, one job — never two files. The `schedule:` trigger must live in the caller because reusable workflows cannot propagate `schedule:` to callers (see [GitHub docs](https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#workflow_call)).
+
+Repos that don't need cron monitoring can omit the `schedule:` trigger and the `issues: write` permission.
+
+### Keeping caller SHA pins fresh
+
+Each caller pins `uses:` to a specific `qte77/.github` commit. To get notified about updates without manual SHA chasing, enable Dependabot for GitHub Actions in the caller repo (`.github/dependabot.yml`):
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+```
+
+Dependabot opens a PR whenever a newer commit lands on `qte77/.github` `main`, so each caller pulls updates on its own cadence. No central fan-out, no `repository_dispatch`, no scripted bumps — decentralized propagation.
+
+References:
+
+- [Reusable workflows](https://docs.github.com/en/actions/sharing-automations/reusing-workflows)
+- [Workflow_call event semantics](https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#workflow_call)
+- [Keeping actions up to date with Dependabot](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/keeping-your-actions-up-to-date-with-dependabot)
+- [`dependabot.yml` configuration](https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file)
 
 ## Lint configs
 
