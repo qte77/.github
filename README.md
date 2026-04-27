@@ -17,6 +17,11 @@ Default community health files for repositories owned by
 | `.github/ISSUE_TEMPLATE/*.yml` | Bug report, feature request, chooser config |
 | `.github/PULL_REQUEST_TEMPLATE.md` | PR description template |
 
+The cascade applies to GitHub-rendered surfaces only (Security tab, issue chooser, profile sidebar). Files do not materialize in consuming repos, so filesystem references like `[security](SECURITY.md)`, `[ -f SECURITY.md ]`, or `cat CONTRIBUTING.md` still 404. For cross-doc links use:
+
+- `https://github.com/qte77/<repo>/security/policy` (renders cascaded content)
+- `https://github.com/qte77/.github/blob/main/<file>` (canonical source)
+
 ## Templates (not cascadable)
 
 These must live in each repo individually — copy from here when bootstrapping a new repo.
