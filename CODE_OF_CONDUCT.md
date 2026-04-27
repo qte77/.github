@@ -1,42 +1,25 @@
 # Code of Conduct
 
-## Our pledge
+These projects are about building things. Keep it that way.
 
-We as members, contributors, and maintainers pledge to make participation in
-our projects a harassment-free experience for everyone, regardless of age,
-body size, visible or invisible disability, ethnicity, sex characteristics,
-gender identity and expression, level of experience, education, socio-economic
-status, nationality, personal appearance, race, religion, or sexual identity
-and orientation.
+## Expectations
 
-## Our standards
+- **Stay on topic.** Discussions, issues, and PRs are for technical work — design, code, bugs, docs, tooling.
+- **Be useful, not nice.** Direct technical feedback is welcome. Personal attacks, harassment, and off-topic drama are not.
+- **Respect time.** Search before asking, write reproducible bug reports, keep PRs scoped.
+- **Disagree on technical merit.** Argue the code, not the person.
 
-Examples of behavior that contributes to a positive environment:
+## What gets you removed
 
-- Demonstrating empathy and kindness toward others
-- Being respectful of differing opinions, viewpoints, and experiences
-- Giving and gracefully accepting constructive feedback
-- Accepting responsibility and apologizing to those affected by our mistakes
-- Focusing on what is best for the community
+Maintainers can lock threads, delete comments, close issues/PRs, or block accounts at their discretion when contributions are:
 
-Examples of unacceptable behavior:
+- Off-topic, ideological, or designed to provoke
+- Harassing, insulting, or hostile to other contributors
+- Spam, self-promotion, or low-effort noise
+- Repeated after being asked to stop
 
-- The use of sexualized language or imagery, and unwelcome sexual attention
-- Trolling, insulting or derogatory comments, and personal or political attacks
-- Public or private harassment
-- Publishing others' private information without explicit permission
-- Other conduct which could reasonably be considered inappropriate
+No appeals process, no committee, no public deliberation. Maintainers decide.
 
-## Enforcement
+## Scope
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported confidentially by opening a private security advisory on the
-relevant repository: **Security tab → Advisories → New draft security
-advisory**.
-
-All complaints will be reviewed and investigated promptly and fairly.
-
-## Attribution
-
-This Code of Conduct is adapted from the
-[Contributor Covenant](https://www.contributor-covenant.org/), version 2.1.
+Applies to all project spaces: repositories, issues, PRs, discussions, and any other official channels.
