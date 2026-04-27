@@ -84,6 +84,8 @@ jobs:
 
 One caller file, one job — never two files. The `schedule:` trigger must live in the caller because reusable workflows cannot propagate `schedule:` to callers (see [GitHub docs](https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#workflow_call)).
 
+**Schedule runs only check links** — the markdown job is skipped on `schedule` events because markdown content is stable post-merge; only links rot independently. PR/push runs check both.
+
 Repos that don't need cron monitoring can omit the `schedule:` trigger and the `issues: write` permission.
 
 ### Keeping caller SHA pins fresh
