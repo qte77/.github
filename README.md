@@ -55,6 +55,31 @@ For stricter reproducibility, callers can pin the `uses:` ref to a SHA instead o
 uses: qte77/.github/.github/workflows/lint-md-links.yml@<SHA>  # bump on .github updates
 ```
 
+### Scheduled monitoring (opt-in)
+
+The reusable workflow accepts a `notify_on_failure` input. Set it to `true` from a caller with a `cron` trigger to get an automated issue when scheduled lint runs fail (catches link rot on idle repos):
+
+```yaml
+name: Lint Monitor
+on:
+  schedule:
+    - cron: "0 0 * * 0"  # weekly Sunday midnight UTC
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  monitor:
+    uses: qte77/.github/.github/workflows/lint-md-links.yml@main
+    with:
+      notify_on_failure: true
+    permissions:
+      contents: read
+      issues: write
+```
+
+PR-blocking callers leave `notify_on_failure` unset (default `false`); no `issues: write` permission needed.
+
 ## Lint configs
 
 These templates pair with the reusable lint workflow above. Copy into a downstream repo to override the fallback fetched from `main`.

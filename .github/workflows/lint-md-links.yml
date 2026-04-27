@@ -8,6 +8,11 @@ on:
     branches: [main]
   workflow_dispatch:
   workflow_call:
+    inputs:
+      notify_on_failure:
+        description: "Create an issue if a lint job fails (use with cron callers)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,4 +42,23 @@ jobs:
         with:
           args: --no-progress '**/*.md'
           fail: true
+
+  notify:
+    needs: [markdown, links]
+    if: failure() && inputs.notify_on_failure
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71  # v9.0.0
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Lint MD and Links: failure on ${context.ref}`,
+              body: `One or more lint jobs failed.\n\nRun: ${runUrl}`,
+              labels: ['report', 'automated']
+            });
 ...
