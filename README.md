@@ -39,15 +39,21 @@ Workflows downstream `qte77/*` repos can call directly. Configs (`.markdownlint.
 |---|---|
 | `.github/workflows/lint-md-links.yml` | Markdown + link checking (markdownlint-cli2 + lychee) |
 
-Caller usage (SHA-pinned per qte77 policy):
+Caller usage:
 
 ```yaml
 jobs:
   lint:
-    uses: qte77/.github/.github/workflows/lint-md-links.yml@33a7f147727f1c3e9eb05f41eac6beab8eb24c47  # 2026-04-27
+    uses: qte77/.github/.github/workflows/lint-md-links.yml@main
 ```
 
-Pin the `uses:` ref to a SHA — the actions inside the workflow are already SHA-pinned. The workflow's runtime config fetch (`.markdownlint.jsonc`, `lychee.toml`) deliberately tracks `main` so lint rule updates propagate without bumping caller pins. Override locally by committing a `.markdownlint.jsonc` or `lychee.toml` at the caller repo root.
+The actions inside the workflow are SHA-pinned. The workflow's runtime config fetch (`.markdownlint.jsonc`, `lychee.toml`) tracks `main`, so lint rule updates propagate to all callers automatically. Override locally by committing a `.markdownlint.jsonc` or `lychee.toml` at the caller repo root.
+
+For stricter reproducibility, callers can pin the `uses:` ref to a SHA instead of `@main` (this is what `qte77/*` repos do internally — not a requirement for external callers):
+
+```yaml
+uses: qte77/.github/.github/workflows/lint-md-links.yml@<SHA>  # bump on .github updates
+```
 
 ## Lint configs
 
