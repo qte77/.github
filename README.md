@@ -119,6 +119,15 @@ These templates pair with the reusable lint workflow above. Copy into a downstre
 | `.markdownlint.jsonc` | Markdown style rules (MD013 disabled, MD060 padded tables, frontmatter-aware MD041) |
 | `lychee.toml` | Link checker config (accept common bot-blocking codes) |
 
+### Local linting
+
+Install `markdownlint-cli2` to match CI behavior (the action uses cli2). The older `markdownlint` CLI does not honor `.markdownlint-cli2.jsonc` ignore files, which causes local-vs-CI discrepancies.
+
+```bash
+npm install -g markdownlint-cli2
+markdownlint-cli2 '**/*.md'
+```
+
 ## References
 
 - Default community health files: <https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file>
