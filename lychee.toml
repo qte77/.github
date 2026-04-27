@@ -1,0 +1,5 @@
+# Lychee link checker configuration
+# https://lychee.cli.rs/usage/config/
+
+# Accept common bot-blocking and rate-limiting status codes as success
+accept = [200, 202, 204, 301, 401, 403, 429]
