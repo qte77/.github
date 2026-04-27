@@ -7,6 +7,18 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      globs:
+        description: "Glob pattern for markdown files"
+        required: false
+        type: string
+        default: "**/*.md"
+      config-ref:
+        description: "Ref of qte77/.github to fetch shared configs from"
+        required: false
+        type: string
+        default: "main"
 
 permissions:
   contents: read
@@ -15,16 +27,48 @@ jobs:
   markdown:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout caller
+        uses: actions/checkout@v4
+      - name: Fetch shared markdownlint config
+        uses: actions/checkout@v4
+        with:
+          repository: qte77/.github
+          ref: ${{ inputs.config-ref || 'main' }}
+          path: .qte77-github
+      - name: Use shared config if caller lacks one
+        env:
+          GLOBS: ${{ inputs.globs || '**/*.md' }}
+        run: |
+          if [ -f .markdownlint.jsonc ] || [ -f .markdownlint.json ]; then
+            echo "Using caller's markdownlint config"
+          else
+            cp .qte77-github/.markdownlint.jsonc .markdownlint.jsonc
+            echo "Using shared config from qte77/.github"
+          fi
+          echo "GLOBS=$GLOBS" >> "$GITHUB_ENV"
       - uses: DavidAnson/markdownlint-cli2-action@v18
         with:
-          globs: "**/*.md"
-          config: ".markdownlint.jsonc"
+          globs: ${{ env.GLOBS }}
 
   links:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout caller
+        uses: actions/checkout@v4
+      - name: Fetch shared lychee config
+        uses: actions/checkout@v4
+        with:
+          repository: qte77/.github
+          ref: ${{ inputs.config-ref || 'main' }}
+          path: .qte77-github
+      - name: Use shared config if caller lacks one
+        run: |
+          if [ -f lychee.toml ] || [ -f .lychee.toml ]; then
+            echo "Using caller's lychee config"
+          else
+            cp .qte77-github/lychee.toml lychee.toml
+            echo "Using shared config from qte77/.github"
+          fi
       - name: Link checker
         uses: lycheeverse/lychee-action@v2
         with:
