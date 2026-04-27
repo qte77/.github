@@ -5,8 +5,8 @@
   "MD033": false,
   // Allow duplicate headings (CHANGELOG repeats Added/Changed/Fixed across versions)
   "MD024": { "siblings_only": true },
-  // Profile README opens with the centered wordmark <img>, not an H1
-  "MD041": false,
+  // Allow non-H1 first line when frontmatter declares a title
+  "MD041": { "front_matter_title": "^\\s*title\\s*[:=]" },
   // Enforce padded table style for readability
   "MD060": { "style": "padded" }
 }

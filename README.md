@@ -26,6 +26,31 @@ These must live in each repo individually — copy from here when bootstrapping 
 | `LICENSE` | Canonical Apache-2.0 text |
 | `NOTICE` | Attribution template with `{PROJECT_NAME}` and `{YEAR}` placeholders |
 
+## Reusable workflows
+
+Workflows downstream `qte77/*` repos can call directly. Configs (`.markdownlint.jsonc`, `lychee.toml`) are picked up from the caller's repo if present, otherwise fetched from this repo's `main` branch as fallback.
+
+| Workflow | Purpose |
+|---|---|
+| `.github/workflows/lint-md-links.yml` | Markdown + link checking (markdownlint-cli2 + lychee) |
+
+Caller usage:
+
+```yaml
+jobs:
+  lint:
+    uses: qte77/.github/.github/workflows/lint-md-links.yml@main
+```
+
+## Lint configs
+
+These templates pair with the reusable lint workflow above. Copy into a downstream repo to override the fallback fetched from `main`.
+
+| File | Purpose |
+|---|---|
+| `.markdownlint.jsonc` | Markdown style rules (MD013 disabled, MD060 padded tables, frontmatter-aware MD041) |
+| `lychee.toml` | Link checker config (accept common bot-blocking codes) |
+
 ## References
 
 - Default community health files: <https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file>
