@@ -4,30 +4,27 @@ Default community health files for repositories owned by
 [@qte77](https://github.com/qte77). Files here are inherited by any
 `qte77/*` repository that does not define its own.
 
-## Active (cascading)
+## Cascading files
 
 | File | Purpose |
 |---|---|
 | `CODE_OF_CONDUCT.md` | Conduct rules across all qte77 projects |
 | `CONTRIBUTING.md` | How to contribute |
+| `GOVERNANCE.md` | Decision-making and maintainer roles |
 | `SECURITY.md` | Vulnerability reporting |
 | `SUPPORT.md` | Where to ask questions |
-| `.github/ISSUE_TEMPLATE/bug_report.yml` | Bug report form |
-| `.github/ISSUE_TEMPLATE/feature_request.yml` | Feature request form |
-| `.github/ISSUE_TEMPLATE/config.yml` | Issue chooser config |
+| `.github/DISCUSSION_TEMPLATE/*.yml` | Discussion category forms (ideas, q-and-a, show-and-tell) |
+| `.github/ISSUE_TEMPLATE/*.yml` | Bug report, feature request, chooser config |
 | `.github/PULL_REQUEST_TEMPLATE.md` | PR description template |
 
-## Drafts (not yet cascading)
+## Templates (not cascadable)
 
-| File | Will cascade as |
+These must live in each repo individually — copy from here when bootstrapping a new repo.
+
+| File | Purpose |
 |---|---|
-| `.github/drafts/GOVERNANCE.md` | `GOVERNANCE.md` (root) |
-| `.github/drafts/DISCUSSION_TEMPLATE/*.yml` | `.github/DISCUSSION_TEMPLATE/*.yml` |
-
-## Not cascadable (must live per-repo)
-
-- `LICENSE` / `NOTICE` — copy into each repo individually
-- `README.md` — repo-specific
+| `LICENSE` | Canonical Apache-2.0 text |
+| `NOTICE` | Attribution template with `{PROJECT_NAME}` and `{YEAR}` placeholders |
 
 ## References
 
