@@ -1,0 +1,159 @@
+---
+name: Bump Version
+
+on:
+  workflow_call:
+    inputs:
+      bump_type:
+        description: "Version bump type: patch, minor, or major"
+        required: true
+        type: string
+      python_version:
+        description: "Python version for actions/setup-python"
+        required: false
+        type: string
+        default: "3.13"
+      bump_my_version_pin:
+        description: "Pip version spec for bump-my-version"
+        required: false
+        type: string
+        default: "1.3.0"
+      branch_prefix:
+        description: "Prefix for the bump branch name"
+        required: false
+        type: string
+        default: "bump"
+      pr_title_template:
+        description: "PR title template ({previous} and {current} are substituted)"
+        required: false
+        type: string
+        default: "chore(release): bump {previous} → {current}"
+      open_pr:
+        description: "Open a PR after pushing the bump branch (set to 'false' to skip)"
+        required: false
+        type: string
+        default: "true"
+    outputs:
+      previous_version:
+        description: "Version before bump"
+        value: ${{ jobs.bump.outputs.previous_version }}
+      current_version:
+        description: "Version after bump"
+        value: ${{ jobs.bump.outputs.current_version }}
+      branch:
+        description: "Bump branch name"
+        value: ${{ jobs.bump.outputs.branch }}
+      pr_url:
+        description: "PR URL (empty when open_pr=false)"
+        value: ${{ jobs.bump.outputs.pr_url }}
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      previous_version: ${{ steps.bump.outputs.previous_version }}
+      current_version: ${{ steps.bump.outputs.current_version }}
+      branch: ${{ steps.commit.outputs.branch }}
+      pr_url: ${{ steps.pr.outputs.pr_url }}
+    env:
+      REPO: ${{ github.repository }}
+      BASE_REF: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install bump-my-version
+        env:
+          PIN: ${{ inputs.bump_my_version_pin }}
+        run: pip install "bump-my-version==$PIN"
+
+      - name: Bump version (files only)
+        id: bump
+        env:
+          BUMP_TYPE: ${{ inputs.bump_type }}
+        run: |
+          previous=$(bump-my-version show current_version)
+          bump-my-version bump "$BUMP_TYPE"
+          current=$(bump-my-version show current_version)
+          echo "previous_version=$previous" >> "$GITHUB_OUTPUT"
+          echo "current_version=$current" >> "$GITHUB_OUTPUT"
+
+      - name: Signed commit and push branch
+        id: commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PREV: ${{ steps.bump.outputs.previous_version }}
+          CURR: ${{ steps.bump.outputs.current_version }}
+          BRANCH_PREFIX: ${{ inputs.branch_prefix }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          BRANCH="$BRANCH_PREFIX-$RUN_NUMBER-$BASE_REF"
+
+          BASE_SHA=$(gh api "repos/$REPO/git/ref/heads/$BASE_REF" --jq '.object.sha')
+          BASE_TREE=$(gh api "repos/$REPO/git/commits/$BASE_SHA" --jq '.tree.sha')
+
+          TREE_ENTRIES="[]"
+          for file in $(git diff --name-only); do
+            CONTENT=$(base64 -w0 "$file")
+            BLOB_SHA=$(gh api "repos/$REPO/git/blobs" -f content="$CONTENT" -f encoding=base64 --jq '.sha')
+            TREE_ENTRIES=$(echo "$TREE_ENTRIES" | jq --arg path "$file" --arg sha "$BLOB_SHA" \
+              '. + [{"path": $path, "mode": "100644", "type": "blob", "sha": $sha}]')
+          done
+
+          NEW_TREE=$(gh api "repos/$REPO/git/trees" \
+            --input <(jq -n --arg base "$BASE_TREE" --argjson tree "$TREE_ENTRIES" \
+              '{base_tree: $base, tree: $tree}') \
+            --jq '.sha')
+
+          COMMIT_SHA=$(gh api "repos/$REPO/git/commits" \
+            --input <(jq -n --arg msg "Bump version: $PREV -> $CURR" \
+              --arg tree "$NEW_TREE" --arg parent "$BASE_SHA" \
+              '{message: $msg, tree: $tree, parents: [$parent]}') \
+            --jq '.sha')
+
+          gh api "repos/$REPO/git/refs/heads/$BRANCH" -X PATCH -f sha="$COMMIT_SHA" -F force=true 2>/dev/null \
+            || gh api "repos/$REPO/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$COMMIT_SHA"
+
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Create PR
+        id: pr
+        if: inputs.open_pr == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PREV: ${{ steps.bump.outputs.previous_version }}
+          CURR: ${{ steps.bump.outputs.current_version }}
+          BRANCH: ${{ steps.commit.outputs.branch }}
+          TEMPLATE: ${{ inputs.pr_title_template }}
+        run: |
+          title="${TEMPLATE//\{previous\}/$PREV}"
+          title="${title//\{current\}/$CURR}"
+          body="Automated version bump from \`$PREV\` to \`$CURR\` on \`$BRANCH\`."
+          pr_url=$(gh pr create \
+            --base "$BASE_REF" \
+            --head "$BRANCH" \
+            --title "$title" \
+            --body "$body")
+          echo "pr_url=$pr_url" >> "$GITHUB_OUTPUT"
+
+      - name: Cleanup on failure
+        # Cleanup intentionally omits tag/release deletion: GitHub's release
+        # immutability remembers deleted tag names forever, so deleting on
+        # failure permanently burns the version number. See qte77/.github#23.
+        if: failure() || cancelled()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH_PREFIX: ${{ inputs.branch_prefix }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          BRANCH="$BRANCH_PREFIX-$RUN_NUMBER-$BASE_REF"
+          gh pr close "$BRANCH" --comment "Closing PR '$BRANCH' to rollback after failure" 2>/dev/null || true
+          gh api "repos/$REPO/git/refs/heads/$BRANCH" -X DELETE 2>/dev/null || true
