@@ -38,6 +38,7 @@ Workflows downstream `qte77/*` repos can call directly. Configs (`.markdownlint.
 | Workflow | Purpose |
 |---|---|
 | `.github/workflows/lint-md-links.yml` | Markdown + link checking (markdownlint-cli2 + lychee) |
+| `.github/workflows/bump-version.yml` | Version bump → signed commit → PR (via `bump-my-version`) |
 
 Caller usage:
 
@@ -87,6 +88,51 @@ One caller file, one job — never two files. The `schedule:` trigger must live 
 **Schedule runs only check links** — the markdown job is skipped on `schedule` events because markdown content is stable post-merge; only links rot independently. PR/push runs check both.
 
 Repos that don't need cron monitoring can omit the `schedule:` trigger and the `issues: write` permission.
+
+### Bump version (workflow_dispatch)
+
+The `bump-version.yml` reusable workflow runs `bump-my-version` on the caller's project, makes a signed commit via the GitHub API, pushes a bump branch, and opens a PR. It does **not** create tags or releases — that stays a separate concern. After the bump PR merges, run `gh release create vX.Y.Z` manually; release automation is a [follow-up](https://github.com/qte77/.github/issues/23).
+
+```yaml
+name: Bump Version
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: "[major|minor|patch]"
+        required: true
+        type: choice
+        options: [patch, minor, major]
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  bump:
+    uses: qte77/.github/.github/workflows/bump-version.yml@<SHA>
+    with:
+      bump_type: ${{ inputs.bump_type }}
+    secrets: inherit
+```
+
+Consumer-repo prerequisites:
+
+- *Settings → Actions → General → Workflow permissions → "Allow GitHub Actions to create and approve pull requests"* must be enabled, otherwise `gh pr create` returns `403 not authorized`.
+- A bumpversion source must be present in the caller repo. Typical setup is `pyproject.toml` with a `[tool.bumpversion]` table containing `current_version` and any `[[tool.bumpversion.files]]` entries.
+
+Inputs (all optional except `bump_type`):
+
+| Input | Default | Notes |
+|---|---|---|
+| `bump_type` | — | `patch` / `minor` / `major` |
+| `python_version` | `"3.13"` | Passed to `actions/setup-python` |
+| `bump_my_version_pin` | `"1.3.0"` | Pip version spec |
+| `branch_prefix` | `"bump"` | Branch is `<prefix>-<run_number>-<ref_name>` |
+| `pr_title_template` | `"chore(release): bump {previous} → {current}"` | `{previous}` / `{current}` substituted at runtime |
+| `open_pr` | `"true"` | Set to `"false"` to push the branch but skip PR creation |
+
+Outputs: `previous_version`, `current_version`, `branch`, `pr_url`.
+
+On failure or cancellation, the workflow closes the PR (if any) and deletes the bump branch. It **never** deletes tags or releases — GitHub's release-immutability setting remembers deleted tag names forever, so deleting on failure permanently burns the version number (see [#23](https://github.com/qte77/.github/issues/23) for the incident that led to this rule).
 
 ### Keeping caller SHA pins fresh
 
