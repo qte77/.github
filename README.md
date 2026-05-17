@@ -87,7 +87,25 @@ One caller file, one job — never two files. The `schedule:` trigger must live 
 
 **Schedule runs only check links** — the markdown job is skipped on `schedule` events because markdown content is stable post-merge; only links rot independently. PR/push runs check both.
 
-Repos that don't need cron monitoring can omit the `schedule:` trigger and the `issues: write` permission.
+Repos that don't need cron monitoring can omit the `schedule:` trigger and drop the `with: notify_on_failure:` line. **The `issues: write` permission must still be granted**, however — the reusable's `notify` job declares it unconditionally, and GitHub Actions validates all reusable-job permissions at workflow startup, *before* `if:` conditions are evaluated. Omitting it yields `startup_failure` on every run, even when `notify_on_failure` is `false` and the notify job is correctly skipped at runtime.
+
+Minimal caller (no cron, no notify):
+
+```yaml
+name: Lint MD and Links
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write  # required at workflow startup even when not opting into notify
+jobs:
+  lint:
+    uses: qte77/.github/.github/workflows/lint-md-links.yml@<SHA>
+```
 
 ### Bump version (workflow_dispatch)
 

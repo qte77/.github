@@ -1,4 +1,19 @@
 ---
+# Reusable workflow: Markdown + link linting (markdownlint-cli2 + lychee).
+#
+# CALLER PERMISSIONS REQUIRED:
+#   permissions:
+#     contents: read
+#     issues:   write   # required at workflow startup; see note below
+#
+# The `notify` job declares `permissions: issues: write` unconditionally.
+# GitHub validates ALL reusable-job permissions at workflow startup, BEFORE
+# evaluating `if:` expressions — so callers must grant `issues: write` even
+# when `notify_on_failure: false` (the default). Omitting it yields
+# `startup_failure` on every run, despite the notify job being skipped at
+# runtime.
+#
+# See README "Permissions required" for the bare-minimum caller shape.
 name: Lint MD and Links
 
 on:
@@ -12,7 +27,7 @@ on:
   workflow_call:
     inputs:
       notify_on_failure:
-        description: "Create an issue if a lint job fails (use with cron callers)"
+        description: "Create a GitHub issue on lint failure (use with cron callers). Default false. Callers must always grant `issues: write` regardless — see workflow header comment."
         type: boolean
         default: false
 
@@ -50,6 +65,9 @@ jobs:
 
   notify:
     needs: [markdown, links]
+    # Skipped at runtime when notify_on_failure is false (the default), but
+    # the `permissions: issues: write` declaration below is still validated
+    # at startup — callers must grant it regardless. See workflow header.
     if: failure() && inputs.notify_on_failure
     runs-on: ubuntu-latest
     permissions:
