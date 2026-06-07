@@ -22,6 +22,8 @@ The cascade applies to GitHub-rendered surfaces only (Security tab, issue choose
 - `https://github.com/qte77/<repo>/security/policy` (renders cascaded content)
 - `https://github.com/qte77/.github/blob/main/<file>` (canonical source)
 
+Cascaded **PR, issue, and discussion templates** auto-populate **only in the web UI**. `gh` and the REST API read templates from the local repo and won't pull these owner-level defaults, so scripted PR/issue creation must use the web UI or fetch the template explicitly.
+
 ## Templates (not cascadable)
 
 These must live in each repo individually — copy from here when bootstrapping a new repo.
