@@ -1,0 +1,42 @@
+---
+name: SVG Render
+
+on:
+  workflow_call:
+    inputs:
+      svg-glob:
+        description: Glob pattern for SVGs to render
+        type: string
+        default: images/*.svg
+  workflow_dispatch:
+    inputs:
+      svg-glob:
+        description: Glob pattern for SVGs to render
+        type: string
+        default: images/*.svg
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+      - name: Fetch renderer from qte77/qte77
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/qte77/qte77/7d10655e8b942859b8d40fd800574314ee4a5cfc/brand/scripts/render_og.py -o render_og.py
+      - name: Render SVGs to PNGs
+        env:
+          SVG_GLOB: ${{ inputs.svg-glob }}
+        run: |
+          for svg in $SVG_GLOB; do
+            uv run --with cairosvg python render_og.py "$svg"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: rendered-pngs
+          path: "*.png"
+...
