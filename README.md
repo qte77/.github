@@ -208,7 +208,7 @@ Inputs:
 
 | Input | Type | Default | Purpose |
 |---|---|---|---|
-| `tag` | string | _(latest `${tag_prefix}*`)_ | Tag to publish; leave blank to auto-resolve the latest matching tag |
+| `tag` | string | *(latest `${tag_prefix}*`)* | Tag to publish; leave blank to auto-resolve the latest matching tag |
 | `changelog_path` | string | `CHANGELOG.md` | Path to the changelog file |
 | `tag_prefix` | string | `v` | Tag prefix used when resolving "latest" |
 
