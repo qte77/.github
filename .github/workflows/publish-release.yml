@@ -1,0 +1,86 @@
+---
+name: Publish Release
+
+# Reusable: create a GitHub Release for an existing tag, extracting notes from
+# the ## [version] block of the changelog. Falls back to GitHub's auto-generated
+# notes when the changelog block is missing or empty.
+#
+# Idempotency / never-delete: exits 1 if a Release already exists for the
+# resolved tag (never overwrites). See qte77/.github#23.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag to publish (defaults to the latest <tag_prefix>* tag)"
+        required: false
+        type: string
+        default: ""
+      changelog_path:
+        description: "Path to the changelog file"
+        required: false
+        type: string
+        default: "CHANGELOG.md"
+      tag_prefix:
+        description: "Tag prefix used when resolving 'latest' (e.g. 'v')"
+        required: false
+        type: string
+        default: "v"
+
+permissions:
+  contents: read  # elevated per-job below
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          fetch-depth: 0  # full history so git tag --list sees all tags
+          persist-credentials: false
+
+      - name: Resolve tag, extract notes, publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_INPUT: ${{ inputs.tag }}
+          TAG_PREFIX: ${{ inputs.tag_prefix }}
+          CHANGELOG_PATH: ${{ inputs.changelog_path }}
+        run: |
+          set -euo pipefail
+
+          # Resolve tag: explicit input wins; otherwise latest matching tag.
+          if [ -n "$TAG_INPUT" ]; then
+            TAG="$TAG_INPUT"
+          else
+            TAG=$(git tag --list "${TAG_PREFIX}*" --sort=-v:refname | head -1)
+          fi
+          if [ -z "$TAG" ]; then
+            echo "no ${TAG_PREFIX}* tag found; nothing to publish"
+            exit 1
+          fi
+          if ! git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "tag ${TAG} does not exist in this repo; aborting"
+            exit 1
+          fi
+
+          # Never overwrite an existing Release.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release ${TAG} already exists; aborting to preserve immutability"
+            exit 1
+          fi
+
+          # Extract the ## [version] block from the changelog.
+          VERSION="${TAG#"${TAG_PREFIX}"}"
+          NOTES=$(awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { in_block = 1; next }
+            in_block && /^## \[/ { exit }
+            in_block { print }
+          ' "$CHANGELOG_PATH" 2>/dev/null) || NOTES=""
+
+          if [ -z "${NOTES// }" ]; then
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          else
+            gh release create "$TAG" --title "$TAG" --notes "$NOTES"
+          fi

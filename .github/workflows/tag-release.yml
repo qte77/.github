@@ -1,0 +1,91 @@
+---
+name: Tag Release
+
+# Reusable: create an annotated tag against the commit that bumped the version
+# file. Pair with a thin on-push caller in each consumer repo, e.g.:
+#
+#   on:
+#     push:
+#       branches: [main]
+#       paths: [pyproject.toml]
+#   jobs:
+#     tag:
+#       uses: qte77/.github/.github/workflows/tag-release.yml@main
+#       permissions:
+#         contents: write
+#
+# Idempotency / never-delete: exits 0 when the version hasn't changed, exits 1
+# when the tag already exists (never deletes on failure). See qte77/.github#23.
+
+on:
+  workflow_call:
+    inputs:
+      version_file:
+        description: "Path to the file that contains the version string"
+        required: false
+        type: string
+        default: "pyproject.toml"
+      tag_prefix:
+        description: "Prefix prepended to the version number (e.g. 'v')"
+        required: false
+        type: string
+        default: "v"
+      version_regex:
+        description: "Extended-regex with one capture group for the version string"
+        required: false
+        type: string
+        default: '^version = "(.*)"'
+
+permissions:
+  contents: read  # elevated per-job below
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          fetch-depth: 2  # HEAD + parent so we can diff the version line
+          persist-credentials: false
+
+      - name: Detect version bump
+        id: detect
+        env:
+          VERSION_FILE: ${{ inputs.version_file }}
+          VERSION_REGEX: ${{ inputs.version_regex }}
+        run: |
+          set -euo pipefail
+          NEW=$(grep -m1 -E "$VERSION_REGEX" "$VERSION_FILE" \
+            | sed -E "s|${VERSION_REGEX}|\1|")
+          OLD=$(git show HEAD^:"$VERSION_FILE" 2>/dev/null \
+            | grep -m1 -E "$VERSION_REGEX" \
+            | sed -E "s|${VERSION_REGEX}|\1|") || OLD=""
+          if [ "$NEW" = "$OLD" ]; then
+            echo "no version change ($OLD == $NEW); nothing to tag"
+            exit 0
+          fi
+          echo "new=${NEW}" >> "$GITHUB_OUTPUT"
+          echo "bumped=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create + push annotated tag
+        if: steps.detect.outputs.bumped == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW: ${{ steps.detect.outputs.new }}
+          TAG_PREFIX: ${{ inputs.tag_prefix }}
+        run: |
+          set -euo pipefail
+          TAG="${TAG_PREFIX}${NEW}"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "tag ${TAG} already exists at $(git rev-parse "${TAG}"); aborting"
+            exit 1
+          fi
+          git config user.email "release-tag@qte77.gha"
+          git config user.name "tag-release"
+          git tag -a -m "Release ${TAG}" "${TAG}"
+          # Use explicit token URL so persist-credentials: false is safe on checkout.
+          git push \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "${TAG}"

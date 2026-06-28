@@ -9,12 +9,12 @@ on:
         required: true
         type: string
       python_version:
-        description: "Python version for actions/setup-python"
+        description: "Python version for actions/setup-python (ignored when use_uv is true)"
         required: false
         type: string
         default: "3.13"
       bump_my_version_pin:
-        description: "Pip version spec for bump-my-version"
+        description: "Pip version spec for bump-my-version (ignored when use_uv is true)"
         required: false
         type: string
         default: "1.3.0"
@@ -33,6 +33,22 @@ on:
         required: false
         type: string
         default: "true"
+      # --- uv / scriv opt-ins (default false; fully backwards-compatible) ---
+      use_uv:
+        description: "Use uv instead of pip for bump-my-version (requires uv-managed project with bump-my-version as a dependency)"
+        required: false
+        type: boolean
+        default: false
+      sync_lockfile:
+        description: "Run 'uv lock' after bumping to sync uv.lock (requires uv; typically paired with use_uv)"
+        required: false
+        type: boolean
+        default: false
+      collect_scriv:
+        description: "Run 'scriv collect' to fold changelog.d/ fragments into CHANGELOG.md before the signed commit (requires uv with scriv installed)"
+        required: false
+        type: boolean
+        default: false
     outputs:
       previous_version:
         description: "Version before bump"
@@ -65,26 +81,68 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 1
+          persist-credentials: false
 
+      # pip path: set up Python when not using uv
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        if: ${{ !inputs.use_uv }}
         with:
           python-version: ${{ inputs.python_version }}
 
-      - name: Install bump-my-version
+      - name: Install bump-my-version (pip path)
+        if: ${{ !inputs.use_uv }}
         env:
           PIN: ${{ inputs.bump_my_version_pin }}
         run: pip install "bump-my-version==$PIN"
+
+      # uv path: set up uv when any uv opt-in is active
+      - name: Setup uv
+        if: ${{ inputs.use_uv || inputs.sync_lockfile || inputs.collect_scriv }}
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Bump version (files only)
         id: bump
         env:
           BUMP_TYPE: ${{ inputs.bump_type }}
+          USE_UV: ${{ inputs.use_uv }}
         run: |
-          previous=$(bump-my-version show current_version)
-          bump-my-version bump "$BUMP_TYPE"
-          current=$(bump-my-version show current_version)
+          set -euo pipefail
+          if [ "$USE_UV" = "true" ]; then
+            previous=$(uv run bump-my-version show current_version)
+            # --no-tag: tag-release.yml fires on push-to-main so the v{new} tag
+            # lands on main's squash-merge commit (not this feature-branch commit).
+            uv run bump-my-version bump --no-tag "$BUMP_TYPE"
+            current=$(uv run bump-my-version show current_version)
+          else
+            previous=$(bump-my-version show current_version)
+            bump-my-version bump "$BUMP_TYPE"
+            current=$(bump-my-version show current_version)
+          fi
           echo "previous_version=$previous" >> "$GITHUB_OUTPUT"
           echo "current_version=$current" >> "$GITHUB_OUTPUT"
+
+      - name: Sync uv.lock
+        if: inputs.sync_lockfile
+        run: |
+          set -euo pipefail
+          # bump-my-version patches version files but not uv.lock; sync it so the
+          # project entry in the lockfile matches the bumped pyproject version.
+          uv lock
+
+      - name: Collect changelog fragments (scriv)
+        if: inputs.collect_scriv
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.current_version }}
+        run: |
+          set -euo pipefail
+          if ls changelog.d/*.md >/dev/null 2>&1; then
+            uv run scriv collect --version "$NEW_VERSION"
+          else
+            echo "no changelog fragments to collect"
+          fi
 
       - name: Signed commit and push branch
         id: commit
@@ -101,11 +159,21 @@ jobs:
           BASE_TREE=$(gh api "repos/$REPO/git/commits/$BASE_SHA" --jq '.tree.sha')
 
           TREE_ENTRIES="[]"
-          for file in $(git diff --name-only); do
+
+          # Modified / added files: create blobs and include in tree.
+          for file in $(git diff --name-only --diff-filter=d); do
             CONTENT=$(base64 -w0 "$file")
             BLOB_SHA=$(gh api "repos/$REPO/git/blobs" -f content="$CONTENT" -f encoding=base64 --jq '.sha')
             TREE_ENTRIES=$(echo "$TREE_ENTRIES" | jq --arg path "$file" --arg sha "$BLOB_SHA" \
               '. + [{"path": $path, "mode": "100644", "type": "blob", "sha": $sha}]')
+          done
+
+          # Deleted files (e.g. scriv fragments after collect): null SHA removes
+          # them from the tree. Backwards-compatible: fires only when collect_scriv
+          # is true and fragments exist.
+          for file in $(git diff --name-only --diff-filter=D); do
+            TREE_ENTRIES=$(echo "$TREE_ENTRIES" | jq --arg path "$file" \
+              '. + [{"path": $path, "mode": "100644", "type": "blob", "sha": null}]')
           done
 
           NEW_TREE=$(gh api "repos/$REPO/git/trees" \
