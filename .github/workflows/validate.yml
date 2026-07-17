@@ -1,0 +1,57 @@
+---
+name: Validate Workflows
+
+# Lint and security-scan all workflows in this repo on every push and PR.
+# Tools: actionlint (workflow correctness + shellcheck on embedded scripts),
+# yamllint (YAML hygiene), zizmor (GitHub Actions security scanner).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint and security-scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xzC /usr/local/bin actionlint
+          actionlint --version
+
+      - name: Install yamllint and zizmor
+        run: pip install --quiet "yamllint==1.38.0" "zizmor==1.26.1"
+
+      - name: "actionlint (includes shellcheck on embedded run: scripts)"
+        run: actionlint .github/workflows/*.yml
+
+      - name: yamllint
+        run: |
+          yamllint -d '{
+            extends: default,
+            rules: {
+              line-length: {max: 120, level: warning},
+              truthy: {allowed-values: ["true", "false"], check-keys: false}
+            }
+          }' .github/workflows/
+
+      - name: zizmor
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: zizmor --format github .github/workflows/

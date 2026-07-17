@@ -41,6 +41,8 @@ Workflows downstream `qte77/*` repos can call directly. Configs (`.markdownlint.
 |---|---|
 | `.github/workflows/lint-md-links.yml` | Markdown + link checking (markdownlint-cli2 + lychee) |
 | `.github/workflows/bump-version.yml` | Version bump → signed commit → PR (via `bump-my-version`) |
+| `.github/workflows/tag-release.yml` | Detect version bump in a file, create annotated git tag |
+| `.github/workflows/publish-release.yml` | Create GitHub Release from a changelog block |
 
 Caller usage:
 
@@ -111,7 +113,7 @@ jobs:
 
 ### Bump version (workflow_dispatch)
 
-The `bump-version.yml` reusable workflow runs `bump-my-version` on the caller's project, makes a signed commit via the GitHub API, pushes a bump branch, and opens a PR. It does **not** create tags or releases — that stays a separate concern. After the bump PR merges, run `gh release create vX.Y.Z` manually; release automation is a [follow-up](https://github.com/qte77/.github/issues/23).
+The `bump-version.yml` reusable workflow runs `bump-my-version` on the caller's project, makes a signed commit via the GitHub API, pushes a bump branch, and opens a PR. It does **not** create tags or releases — pair it with `tag-release.yml` (fires on merge to main) and optionally `publish-release.yml` (manual dispatch) for the full bump→tag→release pipeline.
 
 ```yaml
 name: Bump Version
@@ -131,7 +133,9 @@ jobs:
     uses: qte77/.github/.github/workflows/bump-version.yml@<SHA>
     with:
       bump_type: ${{ inputs.bump_type }}
-    secrets: inherit
+    permissions:
+      contents: write
+      pull-requests: write
 ```
 
 Consumer-repo prerequisites:
@@ -149,10 +153,86 @@ Inputs (all optional except `bump_type`):
 | `branch_prefix` | `"bump"` | Branch is `<prefix>-<run_number>-<ref_name>` |
 | `pr_title_template` | `"chore(release): bump {previous} → {current}"` | `{previous}` / `{current}` substituted at runtime |
 | `open_pr` | `"true"` | Set to `"false"` to push the branch but skip PR creation |
+| `use_uv` | `false` | Use `uv run bump-my-version` instead of pip (requires uv-managed project) |
+| `sync_lockfile` | `false` | Run `uv lock` after bump to keep `uv.lock` in sync |
+| `collect_scriv` | `false` | Run `scriv collect` to fold `changelog.d/` fragments before the signed commit |
 
 Outputs: `previous_version`, `current_version`, `branch`, `pr_url`.
 
 On failure or cancellation, the workflow closes the PR (if any) and deletes the bump branch. It **never** deletes tags or releases — GitHub's release-immutability setting remembers deleted tag names forever, so deleting on failure permanently burns the version number (see [#23](https://github.com/qte77/.github/issues/23) for the incident that led to this rule).
+
+### Tag release
+
+`tag-release.yml` watches any version file for a bump, then creates an annotated `${tag_prefix}${version}` tag against the merge commit. Pair it with `bump-version.yml`: bump-version uses `--no-tag` so the tag always lands on the squash-merge commit rather than the bump-branch commit.
+
+**Permissions required:** `contents: write` (no `secrets: inherit` — uses default `GITHUB_TOKEN`).
+
+**Idempotency / never-delete:** exits 0 when the version hasn't changed; exits 1 if the tag already exists. Tags are never deleted on any failure path (see [#23](https://github.com/qte77/.github/issues/23)).
+
+Inputs:
+
+| Input | Type | Default | Purpose |
+|---|---|---|---|
+| `version_file` | string | `pyproject.toml` | File containing the version string |
+| `tag_prefix` | string | `v` | Prefix prepended to the version number |
+| `version_regex` | string | `^version = "(.*)"` | Extended regex with one capture group for the version |
+
+Minimal thin caller — put this in the consumer repo's `.github/workflows/`:
+
+```yaml
+name: Tag Release
+on:
+  push:
+    branches: [main]
+    paths: [pyproject.toml]
+permissions:
+  contents: write
+jobs:
+  tag:
+    uses: qte77/.github/.github/workflows/tag-release.yml@main
+    permissions:
+      contents: write
+```
+
+Pin `@main` to `@<SHA>` for stricter reproducibility (see [Keeping caller SHA pins fresh](#keeping-caller-sha-pins-fresh)).
+
+### Publish release
+
+`publish-release.yml` creates a GitHub Release for an existing tag, extracting notes from the `## [version]` block of the changelog. Falls back to GitHub's auto-generated notes when the block is missing or empty. Intended as a manual-dispatch step after a tag has been created.
+
+**Permissions required:** `contents: write` (no `secrets: inherit` — uses default `GITHUB_TOKEN`).
+
+**Idempotency / never-delete:** exits 1 if a Release already exists for the resolved tag; never overwrites. See [#23](https://github.com/qte77/.github/issues/23).
+
+Inputs:
+
+| Input | Type | Default | Purpose |
+|---|---|---|---|
+| `tag` | string | *(latest `${tag_prefix}*`)* | Tag to publish; leave blank to auto-resolve the latest matching tag |
+| `changelog_path` | string | `CHANGELOG.md` | Path to the changelog file |
+| `tag_prefix` | string | `v` | Tag prefix used when resolving "latest" |
+
+Minimal thin caller:
+
+```yaml
+name: Publish Release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (leave blank for latest v* tag)"
+        required: false
+        type: string
+permissions:
+  contents: write
+jobs:
+  publish:
+    uses: qte77/.github/.github/workflows/publish-release.yml@main
+    with:
+      tag: ${{ inputs.tag }}
+    permissions:
+      contents: write
+```
 
 ### Keeping caller SHA pins fresh
 
