@@ -153,42 +153,57 @@ jobs:
           BRANCH_PREFIX: ${{ inputs.branch_prefix }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
+          set -euo pipefail
           BRANCH="$BRANCH_PREFIX-$RUN_NUMBER-$BASE_REF"
 
+          # Commit via the GraphQL createCommitOnBranch mutation instead of the
+          # low-level Git Data API. Two reasons (see qte77/.github#40):
+          #  1. GitHub signs createCommitOnBranch commits with its web-flow key,
+          #     so consumers whose main enforces `required_signatures` accept the
+          #     release commit (the Git Data API path produced UNSIGNED commits).
+          #  2. File contents ride in the request BODY (base64 additions), not an
+          #     argv CLI arg, so a large uv.lock never hits 'Argument list too
+          #     long' (supersedes the --input workaround in #36 / issue #38).
           BASE_SHA=$(gh api "repos/$REPO/git/ref/heads/$BASE_REF" --jq '.object.sha')
-          BASE_TREE=$(gh api "repos/$REPO/git/commits/$BASE_SHA" --jq '.tree.sha')
 
-          TREE_ENTRIES="[]"
+          # createCommitOnBranch applies fileChanges onto an existing branch ref,
+          # so point the bump branch at the base commit first (force-reset a stale
+          # ref left by a re-run of the same run number).
+          gh api "repos/$REPO/git/refs/heads/$BRANCH" -X PATCH -f sha="$BASE_SHA" -F force=true 2>/dev/null \
+            || gh api "repos/$REPO/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$BASE_SHA"
 
-          # Modified / added files: create blobs and include in tree.
+          # Additions = every modified/added tracked file; deletions = scriv
+          # fragments removed by `scriv collect` (fires only when collect_scriv is
+          # true and fragments exist). Same file enumeration as the prior step.
+          ADDITIONS="[]"
           for file in $(git diff --name-only --diff-filter=d); do
-            CONTENT=$(base64 -w0 "$file")
-            BLOB_SHA=$(gh api "repos/$REPO/git/blobs" -f content="$CONTENT" -f encoding=base64 --jq '.sha')
-            TREE_ENTRIES=$(echo "$TREE_ENTRIES" | jq --arg path "$file" --arg sha "$BLOB_SHA" \
-              '. + [{"path": $path, "mode": "100644", "type": "blob", "sha": $sha}]')
+            ADDITIONS=$(jq -c --arg path "$file" --arg contents "$(base64 -w0 "$file")" \
+              '. + [{path: $path, contents: $contents}]' <<<"$ADDITIONS")
           done
 
-          # Deleted files (e.g. scriv fragments after collect): null SHA removes
-          # them from the tree. Backwards-compatible: fires only when collect_scriv
-          # is true and fragments exist.
+          DELETIONS="[]"
           for file in $(git diff --name-only --diff-filter=D); do
-            TREE_ENTRIES=$(echo "$TREE_ENTRIES" | jq --arg path "$file" \
-              '. + [{"path": $path, "mode": "100644", "type": "blob", "sha": null}]')
+            DELETIONS=$(jq -c --arg path "$file" '. + [{path: $path}]' <<<"$DELETIONS")
           done
 
-          NEW_TREE=$(gh api "repos/$REPO/git/trees" \
-            --input <(jq -n --arg base "$BASE_TREE" --argjson tree "$TREE_ENTRIES" \
-              '{base_tree: $base, tree: $tree}') \
-            --jq '.sha')
+          COMMIT_OID=$(jq -n \
+            --arg repo "$REPO" \
+            --arg branch "$BRANCH" \
+            --arg oid "$BASE_SHA" \
+            --arg headline "Bump version: $PREV -> $CURR" \
+            --argjson additions "$ADDITIONS" \
+            --argjson deletions "$DELETIONS" \
+            '{query: "mutation($i: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $i) { commit { oid } } }",
+              variables: {i: {
+                branch: {repositoryNameWithOwner: $repo, branchName: $branch},
+                message: {headline: $headline},
+                expectedHeadOid: $oid,
+                fileChanges: {additions: $additions, deletions: $deletions}}}}' \
+            | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid')
 
-          COMMIT_SHA=$(gh api "repos/$REPO/git/commits" \
-            --input <(jq -n --arg msg "Bump version: $PREV -> $CURR" \
-              --arg tree "$NEW_TREE" --arg parent "$BASE_SHA" \
-              '{message: $msg, tree: $tree, parents: [$parent]}') \
-            --jq '.sha')
-
-          gh api "repos/$REPO/git/refs/heads/$BRANCH" -X PATCH -f sha="$COMMIT_SHA" -F force=true 2>/dev/null \
-            || gh api "repos/$REPO/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$COMMIT_SHA"
+          if [ -z "$COMMIT_OID" ] || [ "$COMMIT_OID" = "null" ]; then
+            echo "::error::createCommitOnBranch returned no commit oid"; exit 1
+          fi
 
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
