@@ -162,8 +162,13 @@ jobs:
 
           # Modified / added files: create blobs and include in tree.
           for file in $(git diff --name-only --diff-filter=d); do
-            CONTENT=$(base64 -w0 "$file")
-            BLOB_SHA=$(gh api "repos/$REPO/git/blobs" -f content="$CONTENT" -f encoding=base64 --jq '.sha')
+            # Blob body via stdin (jq --rawfile + gh --input -) so large files — e.g. a
+            # grown uv.lock — don't hit the 128KB single-argument limit (MAX_ARG_STRLEN)
+            # that an inline `-f content=` (or jq `--arg`) would. Report: #38.
+            base64 -w0 "$file" | tr -d '\n' > "$RUNNER_TEMP/blob.b64"
+            BLOB_SHA=$(jq -n --rawfile content "$RUNNER_TEMP/blob.b64" \
+              '{content: $content, encoding: "base64"}' \
+              | gh api "repos/$REPO/git/blobs" --input - --jq '.sha')
             TREE_ENTRIES=$(echo "$TREE_ENTRIES" | jq --arg path "$file" --arg sha "$BLOB_SHA" \
               '. + [{"path": $path, "mode": "100644", "type": "blob", "sha": $sha}]')
           done
