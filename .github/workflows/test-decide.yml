@@ -1,0 +1,122 @@
+---
+# Lint, test, and smoke-check the `decide` composite action (actions/decide/).
+# See actions/decide/README.md for the question schema and gate semantics.
+name: Test Decide Action
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "actions/decide/**"
+      - "tests/decide/**"
+      - "pyproject.toml"
+      - ".github/workflows/test-decide.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --group dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  test:
+    name: Test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --group dev --python ${{ matrix.python-version }}
+      - run: uv run pytest tests/decide -v
+
+  smoke:
+    name: Smoke (composite action + library import)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      # No secrets on purpose: with no CF_WORKERS_AI_TOKEN/LLM_BASE_URL set,
+      # every question must escalate with a clear "missing credential" error
+      # rather than attempt a network call. That is deterministic and
+      # exercises the full input -> env -> decide.py -> GITHUB_OUTPUT wiring.
+      - name: Composite action (cf backend, no credentials)
+        id: gate
+        uses: ./actions/decide
+        with:
+          state: "smoke test"
+          questions: '[{"name": "q1", "type": "predicate", "instructions": "Is this reachable?"}]'
+          backend: cf
+
+      - name: Verify the action escalated without a network call
+        env:
+          RESULT: ${{ steps.gate.outputs.result }}
+        run: |
+          set -euo pipefail
+          echo "$RESULT" | python3 -c '
+          import json, sys
+          result = json.load(sys.stdin)
+          answer = result["q1"]
+          assert answer["band"] == "escalate", result
+          assert answer["probability"] is None, result
+          assert "CF_WORKERS_AI_TOKEN" in answer["error"], result
+          print("OK:", result)
+          '
+
+      - name: Import decide() directly
+        run: |
+          set -euo pipefail
+          python3 -c '
+          import sys
+          sys.path.insert(0, "actions/decide")
+          from decide import decide
+
+          result = decide(
+              "smoke test",
+              [{"name": "q1", "type": "predicate", "instructions": "Is this reachable?"}],
+              backend="cf",
+          )
+          answer = result["q1"]
+          assert answer["band"] == "escalate", result
+          print("OK:", result)
+          '
+
+  live-jev:
+    name: Live Jev call (optional, manual only)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Call Jev if TYPESAFE_API_KEY is set, else skip cleanly
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TYPESAFE_API_KEY:-}" ]; then
+            echo "TYPESAFE_API_KEY not set — skipping live Jev call."
+            exit 0
+          fi
+          echo '{"state": "CI smoke test", "questions": [{"name": "q1", "type": "predicate", "instructions": "Is one plus one two?"}]}' \
+            | python3 actions/decide/decide.py
