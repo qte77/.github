@@ -36,6 +36,7 @@ class TestJevRequestShape:
         assert request.get_method() == "POST"
         assert request.get_header("Authorization") == "Bearer k1"
         assert request.get_header("Content-type") == "application/json"
+        assert request.get_header("User-agent") == "qte77-decide/0.1.0"
 
     @patch("decide.urllib.request.urlopen")
     def test_body_shape_and_default_model(self, mock_urlopen):

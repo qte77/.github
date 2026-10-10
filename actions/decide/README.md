@@ -75,7 +75,7 @@ payload:
 | ------------------------ | -------- | ---------------------- |
 | `TYPESAFE_API_KEY`     | `jev`   | Bearer token for TypeSafe. |
 | `CF_WORKERS_AI_TOKEN`  | `cf`    | Bearer token for the CF-compatible endpoint. |
-| `LLM_BASE_URL`         | `cf`    | Base URL, e.g. `https://gateway.ai.cloudflare.com/.../v1`. |
+| `LLM_BASE_URL`         | `cf`    | The OpenAI-compatible base URL your deployment exposes. |
 
 `decide()` reads these from `os.environ` when `api_key` / `api_base` aren't
 passed explicitly. The composite action (`action.yml`) wires its
@@ -139,6 +139,10 @@ This repo has no tags — pin `uses:` to a commit SHA, as `README.md`'s
   regardless of credentials" is a code comment in a sibling project's caller.
   A 403 still escalates correctly either way (`TypeSafePermissionDeniedError`
   territory per the SDK's exceptions page); only the *cause* is unconfirmed.
+- **The `User-Agent: qte77-decide/0.1.0` header is sent on every request, but
+  whether it changes WAF behavior one way or the other is unverified** —
+  it's cheap insurance against urllib's default (a bot-signature-looking
+  `Python-urllib/3.x`), not a confirmed fix for the 403s above.
 - **The `cf` backend's request/response shape (`{base}/chat/completions`,
   OpenAI-compatible) was not independently re-verified against Cloudflare's
   own docs this session** — it follows the `LLM_BASE_URL` + `api_base`

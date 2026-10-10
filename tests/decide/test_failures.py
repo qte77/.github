@@ -76,10 +76,21 @@ class TestJevFailuresEscalate:
 
     @patch("decide.urllib.request.urlopen")
     def test_never_raises_on_any_backend_failure(self, mock_urlopen):
-        mock_urlopen.side_effect = RuntimeError("boom")
-        # decide() must swallow this into an escalate verdict, not propagate it.
+        # A deliberately unlisted exception type — not HTTPError/TimeoutError/
+        # URLError, and not RuntimeError either (that would pass by coincidence
+        # via an unrelated except clause). _post_json's catch-all must still
+        # turn this into an escalate verdict rather than let it propagate.
+        mock_urlopen.side_effect = ConnectionResetError("peer reset")
         result = decide("state", _one_predicate(), backend="jev", api_key=SECRET)
         assert result["q1"]["band"] == "escalate"
+        assert "ConnectionResetError" in result["q1"]["error"]
+
+    @patch("decide.urllib.request.urlopen")
+    def test_unlisted_exception_does_not_leak_key(self, mock_urlopen):
+        mock_urlopen.side_effect = ConnectionResetError(f"peer reset, key={SECRET}")
+        result = decide("state", _one_predicate(), backend="jev", api_key=SECRET)
+        assert result["q1"]["band"] == "escalate"
+        assert SECRET not in result["q1"]["error"]
 
 
 class TestCfFailuresEscalate:

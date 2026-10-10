@@ -49,6 +49,12 @@ DEFAULT_CF_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 DEFAULT_HI = 0.85
 DEFAULT_TIMEOUT = 10.0
 
+# urllib's default User-Agent ("Python-urllib/3.x") reads as a bot signature.
+# TypeSafe sits behind a Cloudflare WAF (per the feelings repo's jev_gate.py
+# comment) and the official SDK sends its own UA; sending one here too is
+# cheap insurance. UNVERIFIED: whether this affects WAF behavior either way.
+USER_AGENT = "qte77-decide/0.1.0"
+
 _MAX_ERROR_BODY = 200
 
 # Maps our question "type" to the wire's "type". Our "predicate" is TypeSafe's
@@ -114,7 +120,7 @@ def _post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout:
     data = json.dumps(body).encode("utf-8")
     request = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - fixed https API host
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # fixed https API host, not user input
             raw = response.read()
     except urllib.error.HTTPError as error:
         error_body = error.read()[:_MAX_ERROR_BODY].decode("utf-8", "replace")
@@ -123,6 +129,12 @@ def _post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout:
         raise RuntimeError("request timed out") from None
     except urllib.error.URLError as error:
         raise RuntimeError(_redact(f"connection error: {error.reason}", secret)) from None
+    except Exception as error:
+        # Reason: never-raise contract (see decide()'s docstring) — anything the three
+        # excepts above don't name (ConnectionResetError, ssl.SSLError,
+        # http.client.IncompleteRead/RemoteDisconnected, ...) must still become an
+        # escalate verdict in the caller, not propagate out of decide().
+        raise RuntimeError(_redact(f"{type(error).__name__}: {error}", secret)) from None
 
     if not raw:
         raise RuntimeError("empty response body")
@@ -236,7 +248,12 @@ def _decide_jev(
 
     base = api_base if api_base is not None else os.environ.get("TYPESAFE_BASE_URL") or TYPESAFE_BASE_URL
     body = {"state": state, "model": model or DEFAULT_JEV_MODEL, "questions": batch}
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": USER_AGENT,
+    }
 
     try:
         parsed = _post_json(base.rstrip("/") + TYPESAFE_SYSTEM_ONE_PATH, body, headers, timeout, key)
@@ -334,7 +351,7 @@ def _decide_cf(
         if not base:
             results[name] = _escalate("missing LLM_BASE_URL", "cf")
             continue
-        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "User-Agent": USER_AGENT}
         body = {"model": model or DEFAULT_CF_MODEL, "messages": [{"role": "user", "content": prompt}]}
         try:
             parsed = _post_json(base.rstrip("/") + CF_CHAT_COMPLETIONS_PATH, body, headers, timeout, key)

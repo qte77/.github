@@ -34,6 +34,7 @@ class TestCfRequestShape:
         request = _captured_request(mock_urlopen)
         assert request.full_url == "https://gateway.example/chat/completions"
         assert request.get_header("Authorization") == "Bearer tok"
+        assert request.get_header("User-agent") == "qte77-decide/0.1.0"
         body = json.loads(request.data)
         assert body["model"] == DEFAULT_CF_MODEL
         assert body["messages"][0]["role"] == "user"
