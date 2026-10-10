@@ -131,7 +131,7 @@ def _post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout:
     data = json.dumps(body).encode("utf-8")
     request = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # scheme validated above
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - scheme allowlisted above
             raw = response.read()
     except urllib.error.HTTPError as error:
         error_body = error.read()[:_MAX_ERROR_BODY].decode("utf-8", "replace")
