@@ -1,0 +1,80 @@
+---
+name: "Decide (act / review / escalate)"
+description: >-
+  Ask one or more calibrated questions about a piece of state via TypeSafe's
+  Jev model, or an uncalibrated Cloudflare Workers AI fallback, and band each
+  answer into act/review/escalate. See README.md for the question schema,
+  gate semantics, and secret names.
+author: qte77
+
+inputs:
+  state:
+    description: "The state to evaluate, as a plain string (serialize structured data yourself)."
+    required: true
+  questions:
+    description: >-
+      JSON array of question objects: [{"name", "type": "predicate"|"choice"|"score",
+      "instructions", "choices"? (for "choice"), "levels"? (for "score")}].
+    required: true
+  backend:
+    description: "'jev' (TypeSafe, calibrated) or 'cf' (Cloudflare Workers AI fallback, uncalibrated)."
+    required: false
+    default: "jev"
+  hi:
+    description: "Confidence threshold for the act/escalate band (0-1)."
+    required: false
+    default: "0.85"
+  model:
+    description: "Override the backend's default model id. Leave blank to use decide.py's default."
+    required: false
+    default: ""
+  typesafe_api_key:
+    description: "TypeSafe API key for the 'jev' backend. Pass secrets.TYPESAFE_API_KEY."
+    required: false
+    default: ""
+  cf_api_token:
+    description: "Cloudflare Workers AI token for the 'cf' backend. Pass secrets.CF_WORKERS_AI_TOKEN."
+    required: false
+    default: ""
+  cf_base_url:
+    description: "Cloudflare Workers AI OpenAI-compatible base URL for the 'cf' backend."
+    required: false
+    default: ""
+
+outputs:
+  result:
+    description: >-
+      JSON object: {name: {"value", "probability", "band", "source", "error"}},
+      one entry per input question.
+    value: ${{ steps.decide.outputs.result }}
+
+runs:
+  using: composite
+  steps:
+    - id: decide
+      shell: bash
+      env:
+        DECIDE_STATE: ${{ inputs.state }}
+        DECIDE_QUESTIONS: ${{ inputs.questions }}
+        DECIDE_BACKEND: ${{ inputs.backend }}
+        DECIDE_HI: ${{ inputs.hi }}
+        DECIDE_MODEL: ${{ inputs.model }}
+        TYPESAFE_API_KEY: ${{ inputs.typesafe_api_key }}
+        CF_WORKERS_AI_TOKEN: ${{ inputs.cf_api_token }}
+        LLM_BASE_URL: ${{ inputs.cf_base_url }}
+      run: |
+        set -euo pipefail
+        payload=$(jq -n \
+          --arg state "$DECIDE_STATE" \
+          --argjson questions "$DECIDE_QUESTIONS" \
+          --arg backend "$DECIDE_BACKEND" \
+          --argjson hi "$DECIDE_HI" \
+          --arg model "$DECIDE_MODEL" \
+          '{state: $state, questions: $questions, backend: $backend, hi: $hi}
+           + (if $model == "" then {} else {model: $model} end)')
+        result=$(printf '%s' "$payload" | python3 "$GITHUB_ACTION_PATH/decide.py")
+        {
+          echo "result<<DECIDE_RESULT_EOF"
+          echo "$result"
+          echo "DECIDE_RESULT_EOF"
+        } >> "$GITHUB_OUTPUT"
