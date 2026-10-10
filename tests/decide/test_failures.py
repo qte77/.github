@@ -33,6 +33,18 @@ class TestJevFailuresEscalate:
         assert SECRET not in answer["error"]
 
     @patch("decide.urllib.request.urlopen")
+    def test_non_http_scheme_escalates_without_network_call(self, mock_urlopen):
+        # Bandit B310 (CodeFactor): urlopen must never be reachable with an
+        # unvalidated scheme (file:/, etc.) — api_base is operator-supplied,
+        # not request content, but a misconfigured value must still escalate
+        # cleanly rather than ever attempt urlopen().
+        result = decide("state", _one_predicate(), backend="jev", api_key=SECRET, api_base="file:///etc/passwd")
+        answer = result["q1"]
+        assert answer["band"] == "escalate"
+        assert "scheme" in answer["error"]
+        mock_urlopen.assert_not_called()
+
+    @patch("decide.urllib.request.urlopen")
     def test_timeout_escalates(self, mock_urlopen):
         mock_urlopen.side_effect = TimeoutError("timed out")
         result = decide("state", _one_predicate(), backend="jev", api_key=SECRET)

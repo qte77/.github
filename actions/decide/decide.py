@@ -21,6 +21,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -117,10 +118,20 @@ def _post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout:
     The raised message is truncated and scrubbed of `secret` — callers turn it
     into an escalate verdict's `error` field, which may end up in CI logs.
     """
+    # Explicit scheme allowlist before urlopen() (addresses Bandit B310: urlopen
+    # on an unvalidated scheme could open file:/ or other unexpected handlers).
+    # `url` is built from a hardcoded default or an operator-supplied api_base /
+    # LLM_BASE_URL, never from request/question content, but validating costs
+    # nothing and turns a misconfigured base into a clear escalate instead of
+    # a surprising open.
+    scheme = urllib.parse.urlsplit(url).scheme
+    if scheme not in ("http", "https"):
+        raise RuntimeError(f"unsupported URL scheme: {scheme!r} (expected http or https)")
+
     data = json.dumps(body).encode("utf-8")
     request = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # fixed https API host, not user input
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # scheme validated above
             raw = response.read()
     except urllib.error.HTTPError as error:
         error_body = error.read()[:_MAX_ERROR_BODY].decode("utf-8", "replace")
