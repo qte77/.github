@@ -8,5 +8,8 @@
   // Allow non-H1 first line when frontmatter declares a title
   "MD041": { "front_matter_title": "^\\s*title\\s*[:=]" },
   // Enforce padded table style for readability
-  "MD060": { "style": "padded" }
+  "MD060": { "style": "padded" },
+  // A frontmatter `title:` plus its matching `# H1` (docs-governance frontmatter-convention) is not
+  // two top-level headings; without this every conforming file fails MD025
+  "MD025": { "front_matter_title": "" }
 }
