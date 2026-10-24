@@ -1,0 +1,23 @@
+[project]
+name = "github-decide"
+version = "0.1.0"
+description = "Shared act/review/escalate decision gate (TypeSafe Jev / Cloudflare Workers AI fallback) for GitHub Actions workflows across the qte77 estate."
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.17.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["actions/decide"]
