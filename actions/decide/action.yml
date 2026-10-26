@@ -17,7 +17,7 @@ inputs:
       "instructions", "choices"? (for "choice"), "levels"? (for "score")}].
     required: true
   backend:
-    description: "'jev' (TypeSafe, calibrated) or 'cf' (Cloudflare Workers AI fallback, uncalibrated)."
+    description: "'jev' (TypeSafe) or 'clef' (Cloudflare decision model), both calibrated; or 'cf' (Workers AI chat fallback, uncalibrated)."
     required: false
     default: "jev"
   hi:
@@ -33,11 +33,11 @@ inputs:
     required: false
     default: ""
   cf_api_token:
-    description: "Cloudflare Workers AI token for the 'cf' backend. Pass secrets.CF_WORKERS_AI_TOKEN."
+    description: "Cloudflare Workers AI token for the 'clef' and 'cf' backends. Pass secrets.CF_WORKERS_AI_TOKEN."
     required: false
     default: ""
   cf_base_url:
-    description: "Cloudflare Workers AI OpenAI-compatible base URL for the 'cf' backend."
+    description: "Cloudflare Workers AI OpenAI-compatible base URL ({account}/ai/v1) for the 'clef' and 'cf' backends."
     required: false
     default: ""
 

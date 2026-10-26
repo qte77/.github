@@ -2,7 +2,8 @@
 
 A shared act/review/escalate decision gate for GitHub Actions workflows across
 the qte77 estate. Ask one or more questions about a piece of state against
-[TypeSafe's Jev model][typesafe-api] (calibrated probabilities) or, as an
+[TypeSafe's Jev model][typesafe-api] or [Cloudflare's Clef][clef] (both
+decision models with calibrated probabilities, same wire shape) or, as an
 uncalibrated fallback, an OpenAI-compatible chat endpoint such as Cloudflare
 Workers AI. Get back a band per question so a workflow can gate on it without
 ever auto-acting on an unreliable answer.
@@ -36,7 +37,7 @@ shape — one entry per question, keyed by `name`:
 | `value`       | The answer: a bool (predicate), the chosen label (choice), or a number (score). |
 | `probability` | A 0-1 confidence signal — see "Bands" below for what it means per type.         |
 | `band`        | `"act"`, `"review"`, or `"escalate"`.                                          |
-| `source`      | `"jev"` or `"cf"`.                                                             |
+| `source`      | `"jev"`, `"clef"` or `"cf"`.                                                   |
 | `error`       | `None` on success, else a short message (never contains a secret).             |
 
 A malformed question, a backend error, a timeout, a missing credential, or a
@@ -62,6 +63,8 @@ with no `name`, or two questions sharing a `name`).
   [docs.typesafe.ai/patterns/confidence-routing][typesafe-routing] (the
   pattern this gate follows; its own example uses a 0.6 floor and a 0.85
   threshold for auto-approving a high-stakes action — `hi`'s default here).
+- **`clef` backend**: same answer shapes as Jev, so the same gates apply.
+  Models: `clef-flash` (default, 9B) or `clef` (27B).
 - **`cf` backend**: never calibrated, so `probability` is always `None` and
   the band is always `"escalate"`. The fallback exists to get *an* answer
   without ever auto-acting on it.
@@ -74,8 +77,8 @@ payload:
 | Env var                | Backend | Purpose             |
 | ------------------------ | -------- | ---------------------- |
 | `TYPESAFE_API_KEY`     | `jev`   | Bearer token for TypeSafe. |
-| `CF_WORKERS_AI_TOKEN`  | `cf`    | Bearer token for the CF-compatible endpoint. |
-| `LLM_BASE_URL`         | `cf`    | The OpenAI-compatible base URL your deployment exposes. |
+| `CF_WORKERS_AI_TOKEN`  | `clef`, `cf` | Bearer token for Cloudflare Workers AI. |
+| `LLM_BASE_URL`         | `clef`, `cf` | The OpenAI-compatible base URL. For `clef` it must be Workers AI's `{account}/ai/v1`; the Clef URL `{account}/ai/run/@cf/cloudflare/<model>` is derived from it. |
 
 `decide()` reads these from `os.environ` when `api_key` / `api_base` aren't
 passed explicitly. The composite action (`action.yml`) wires its
@@ -148,6 +151,10 @@ This repo has no tags — pin `uses:` to a commit SHA, as `README.md`'s
   own docs this session** — it follows the `LLM_BASE_URL` + `api_base`
   convention already used elsewhere in the qte77 estate.
 - No OpenAI `/v1/decisions` or Perplexity adapter — out of scope for now.
+- **`clef`** was checked against Cloudflare's model page and JSON schemas
+  (2026-10-26) but has not had a live call yet. Whether the REST response is
+  wrapped in Cloudflare's usual `{"result": ...}` envelope is unverified, so
+  both shapes are accepted.
 - `score` questions pick `probability` from Jev's `confidence` field; there is
   no first-party guidance on using it for a Jev-native "review" threshold
   beyond the `choice`-oriented confidence-routing pattern, so treat the
@@ -158,3 +165,4 @@ This repo has no tags — pin `uses:` to a commit SHA, as `README.md`'s
 [typesafe-models]: https://docs.typesafe.ai/models
 [typesafe-confidence]: https://docs.typesafe.ai/confidence
 [typesafe-routing]: https://docs.typesafe.ai/patterns/confidence-routing
+[clef]: https://developers.cloudflare.com/workers-ai/models/clef-flash/
