@@ -44,6 +44,15 @@ DEFAULT_JEV_MODEL = "jev-1.13.0"
 # + api_base pattern). Treat the exact CF request/response shape as unverified.
 DEFAULT_CF_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 
+# Verified 2026-10-26 against developers.cloudflare.com/workers-ai/models/clef-flash/
+# (+ schema-input.json / schema-output.json): Clef takes Jev's wire shape
+# ({"model", "state", "questions"}) at {account}/ai/run/@cf/cloudflare/<model>, Bearer token,
+# and answers with the same noul / choice / score shapes. It reuses the estate's
+# CF_WORKERS_AI_TOKEN + LLM_BASE_URL ({account}/ai/v1), so it needs no new secret.
+CLEF_MODELS = ("clef-flash", "clef")
+DEFAULT_CLEF_MODEL = "clef-flash"
+_CF_OPENAI_SUFFIX = "/ai/v1"
+
 # TypeSafe's own confidence-routing pattern doc (docs.typesafe.ai/patterns/
 # confidence-routing) uses 0.6 as a floor and 0.85 to auto-approve a high-stakes
 # action; 0.85 is the same conservative default used here.
@@ -188,20 +197,20 @@ def _jev_question_payload(question: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def _answer_from_jev(answer: Any, hi: float) -> dict[str, Any]:
+def _answer_from_jev(answer: Any, hi: float, source: str = "jev") -> dict[str, Any]:
     if not isinstance(answer, dict):
-        return _escalate("missing answer in Jev response", "jev")
+        return _escalate(f"missing answer in {source} response", source)
     kind = answer.get("type")
     if kind == "noul":
         probability = answer.get("noul")
         if not isinstance(probability, (int, float)):
-            return _escalate("malformed noul answer: 'noul' missing or not a number", "jev")
+            return _escalate("malformed noul answer: 'noul' missing or not a number", source)
         probability = float(probability)
         return {
             "value": probability >= 0.5,
             "probability": probability,
             "band": _band(probability, hi, symmetric=True),
-            "source": "jev",
+            "source": source,
             "error": None,
         }
     if kind == "choice":
@@ -212,7 +221,7 @@ def _answer_from_jev(answer: Any, hi: float) -> dict[str, Any]:
             "value": choice,
             "probability": confidence,
             "band": _band(confidence, hi, symmetric=False),
-            "source": "jev",
+            "source": source,
             "error": None,
         }
     if kind == "score":
@@ -223,10 +232,10 @@ def _answer_from_jev(answer: Any, hi: float) -> dict[str, Any]:
             "value": score,
             "probability": confidence,
             "band": _band(confidence, hi, symmetric=False),
-            "source": "jev",
+            "source": source,
             "error": None,
         }
-    return _escalate(f"unrecognized Jev answer type: {kind!r}", "jev")
+    return _escalate(f"unrecognized {source} answer type: {kind!r}", source)
 
 
 def _decide_jev(
@@ -238,6 +247,47 @@ def _decide_jev(
     timeout: float,
     hi: float,
 ) -> dict[str, dict[str, Any]]:
+    key = (api_key if api_key is not None else os.environ.get("TYPESAFE_API_KEY", "")).strip()
+    base = api_base if api_base is not None else os.environ.get("TYPESAFE_BASE_URL") or TYPESAFE_BASE_URL
+    url = base.rstrip("/") + TYPESAFE_SYSTEM_ONE_PATH
+    missing = "" if key else "missing TYPESAFE_API_KEY"
+    return _decide_system_one(state, questions, model or DEFAULT_JEV_MODEL, url, key, missing, timeout, hi, "jev")
+
+
+def _decide_clef(
+    state: str,
+    questions: list[dict[str, Any]],
+    model: str,
+    api_key: str | None,
+    api_base: str | None,
+    timeout: float,
+    hi: float,
+) -> dict[str, dict[str, Any]]:
+    key = (api_key if api_key is not None else os.environ.get("CF_WORKERS_AI_TOKEN", "")).strip()
+    base = (api_base if api_base is not None else os.environ.get("LLM_BASE_URL", "")).strip().rstrip("/")
+    missing = ""
+    if not key:
+        missing = "missing CF_WORKERS_AI_TOKEN"
+    elif not base:
+        missing = "missing LLM_BASE_URL"
+    elif not base.endswith(_CF_OPENAI_SUFFIX):
+        missing = "LLM_BASE_URL must be the Workers AI OpenAI-compatible base ({account}/ai/v1)"
+    url = base.removesuffix("/v1") + f"/run/@cf/cloudflare/{model}"
+    return _decide_system_one(state, questions, model, url, key, missing, timeout, hi, "clef")
+
+
+def _decide_system_one(
+    state: str,
+    questions: list[dict[str, Any]],
+    model: str,
+    url: str,
+    key: str,
+    missing: str,
+    timeout: float,
+    hi: float,
+    source: str,
+) -> dict[str, dict[str, Any]]:
+    """One batched call to a System One endpoint (Jev or Clef: same wire shape)."""
     results: dict[str, dict[str, Any]] = {}
     batch: dict[str, dict[str, Any]] = {}
     for question in questions:
@@ -245,20 +295,17 @@ def _decide_jev(
         try:
             batch[name] = _jev_question_payload(question)
         except _QuestionShapeError as error:
-            results[name] = _escalate(str(error), "jev")
+            results[name] = _escalate(str(error), source)
 
     if not batch:
         return results
 
-    key = api_key if api_key is not None else os.environ.get("TYPESAFE_API_KEY", "")
-    key = key.strip()
-    if not key:
+    if missing:
         for name in batch:
-            results[name] = _escalate("missing TYPESAFE_API_KEY", "jev")
+            results[name] = _escalate(missing, source)
         return results
 
-    base = api_base if api_base is not None else os.environ.get("TYPESAFE_BASE_URL") or TYPESAFE_BASE_URL
-    body = {"state": state, "model": model or DEFAULT_JEV_MODEL, "questions": batch}
+    body = {"state": state, "model": model, "questions": batch}
     headers = {
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
@@ -267,20 +314,24 @@ def _decide_jev(
     }
 
     try:
-        parsed = _post_json(base.rstrip("/") + TYPESAFE_SYSTEM_ONE_PATH, body, headers, timeout, key)
+        parsed = _post_json(url, body, headers, timeout, key)
     except RuntimeError as error:
         for name in batch:
-            results[name] = _escalate(str(error), "jev")
+            results[name] = _escalate(str(error), source)
         return results
 
+    # Reason: Cloudflare's REST API usually wraps payloads in {"result": ...}; unverified for
+    # Clef until a live call, so the bare shape is accepted too.
+    if isinstance(parsed.get("result"), dict):
+        parsed = parsed["result"]
     answers = parsed.get("answers")
     if not isinstance(answers, dict):
         for name in batch:
-            results[name] = _escalate("malformed Jev response: missing 'answers'", "jev")
+            results[name] = _escalate(f"malformed {source} response: missing 'answers'", source)
         return results
 
     for name in batch:
-        results[name] = _answer_from_jev(answers.get(name), hi)
+        results[name] = _answer_from_jev(answers.get(name), hi, source)
     return results
 
 
@@ -400,8 +451,10 @@ def decide(
     question with no "name" / a name reused by another question in the same
     call. Never raises for a backend or network failure.
     """
-    if backend not in ("jev", "cf"):
-        raise DecideError(f"unknown backend: {backend!r} (expected 'jev' or 'cf')")
+    if backend not in ("jev", "clef", "cf"):
+        raise DecideError(f"unknown backend: {backend!r} (expected 'jev', 'clef' or 'cf')")
+    if backend == "clef" and (model or DEFAULT_CLEF_MODEL) not in CLEF_MODELS:
+        raise DecideError(f"unknown clef model: {model!r} (expected one of {CLEF_MODELS})")
 
     seen: set[str] = set()
     for question in questions:
@@ -414,6 +467,8 @@ def decide(
 
     if backend == "jev":
         return _decide_jev(state, questions, model, api_key, api_base, timeout, hi)
+    if backend == "clef":
+        return _decide_clef(state, questions, model or DEFAULT_CLEF_MODEL, api_key, api_base, timeout, hi)
     return _decide_cf(state, questions, model, api_key, api_base, timeout)
 
 
