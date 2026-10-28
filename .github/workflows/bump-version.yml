@@ -49,6 +49,17 @@ on:
         required: false
         type: boolean
         default: false
+      # --- monorepo opt-ins (defaults keep existing behaviour) ---
+      config_file:
+        description: "bump-my-version config file relative to the repo root (default: auto-discovery)"
+        required: false
+        type: string
+        default: ""
+      lockfile_dirs:
+        description: "Space-separated directories to run 'uv lock' in when sync_lockfile is true"
+        required: false
+        type: string
+        default: "."
     outputs:
       previous_version:
         description: "Version before bump"
@@ -101,36 +112,46 @@ jobs:
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
         with:
           enable-cache: true
-          cache-dependency-glob: "uv.lock"
+          cache-dependency-glob: "**/uv.lock"
 
       - name: Bump version (files only)
         id: bump
         env:
           BUMP_TYPE: ${{ inputs.bump_type }}
           USE_UV: ${{ inputs.use_uv }}
+          CONFIG_FILE: ${{ inputs.config_file }}
         run: |
           set -euo pipefail
           if [ "$USE_UV" = "true" ]; then
-            previous=$(uv run bump-my-version show current_version)
-            # --no-tag: tag-release.yml fires on push-to-main so the v{new} tag
-            # lands on main's squash-merge commit (not this feature-branch commit).
-            uv run bump-my-version bump --no-tag "$BUMP_TYPE"
-            current=$(uv run bump-my-version show current_version)
+            bmv=(uv run bump-my-version)
           else
-            previous=$(bump-my-version show current_version)
-            bump-my-version bump "$BUMP_TYPE"
-            current=$(bump-my-version show current_version)
+            bmv=(bump-my-version)
           fi
+          cfg=()
+          if [ -n "$CONFIG_FILE" ]; then
+            cfg=(--config-file "$CONFIG_FILE")
+          fi
+          previous=$("${bmv[@]}" show "${cfg[@]}" current_version)
+          # --no-commit: the signed-commit step below builds the commit from the
+          # working-tree diff, so a local commit (config `commit = true`) would
+          # leave it empty. --no-tag: tag-release.yml tags main's squash-merge commit.
+          "${bmv[@]}" bump "${cfg[@]}" --no-commit --no-tag "$BUMP_TYPE"
+          current=$("${bmv[@]}" show "${cfg[@]}" current_version)
           echo "previous_version=$previous" >> "$GITHUB_OUTPUT"
           echo "current_version=$current" >> "$GITHUB_OUTPUT"
 
       - name: Sync uv.lock
         if: inputs.sync_lockfile
+        env:
+          LOCKFILE_DIRS: ${{ inputs.lockfile_dirs }}
         run: |
           set -euo pipefail
           # bump-my-version patches version files but not uv.lock; sync it so the
           # project entry in the lockfile matches the bumped pyproject version.
-          uv lock
+          read -ra dirs <<< "$LOCKFILE_DIRS"
+          for dir in "${dirs[@]}"; do
+            uv lock --directory "$dir"
+          done
 
       - name: Collect changelog fragments (scriv)
         if: inputs.collect_scriv
@@ -175,10 +196,16 @@ jobs:
           # Additions = every modified/added tracked file; deletions = scriv
           # fragments removed by `scriv collect` (fires only when collect_scriv is
           # true and fragments exist). Same file enumeration as the prior step.
-          ADDITIONS="[]"
+          # Contents and the additions list stay in files (jq --rawfile/--slurpfile)
+          # so a large file, e.g. a grown uv.lock, never hits the 128KB
+          # single-argument limit (MAX_ARG_STRLEN) that jq --arg/--argjson would. #38.
+          ADDITIONS="$RUNNER_TEMP/additions.json"
+          echo '[]' > "$ADDITIONS"
           for file in $(git diff --name-only --diff-filter=d); do
-            ADDITIONS=$(jq -c --arg path "$file" --arg contents "$(base64 -w0 "$file")" \
-              '. + [{path: $path, contents: $contents}]' <<<"$ADDITIONS")
+            base64 -w0 "$file" | tr -d '\n' > "$RUNNER_TEMP/blob.b64"
+            jq -c --arg path "$file" --rawfile contents "$RUNNER_TEMP/blob.b64" \
+              '. + [{path: $path, contents: $contents}]' "$ADDITIONS" > "$ADDITIONS.tmp"
+            mv "$ADDITIONS.tmp" "$ADDITIONS"
           done
 
           DELETIONS="[]"
@@ -191,14 +218,14 @@ jobs:
             --arg branch "$BRANCH" \
             --arg oid "$BASE_SHA" \
             --arg headline "Bump version: $PREV -> $CURR" \
-            --argjson additions "$ADDITIONS" \
+            --slurpfile additions "$ADDITIONS" \
             --argjson deletions "$DELETIONS" \
             '{query: "mutation($i: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $i) { commit { oid } } }",
               variables: {i: {
                 branch: {repositoryNameWithOwner: $repo, branchName: $branch},
                 message: {headline: $headline},
                 expectedHeadOid: $oid,
-                fileChanges: {additions: $additions, deletions: $deletions}}}}' \
+                fileChanges: {additions: $additions[0], deletions: $deletions}}}}' \
             | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid')
 
           if [ -z "$COMMIT_OID" ] || [ "$COMMIT_OID" = "null" ]; then

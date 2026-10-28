@@ -156,6 +156,10 @@ Inputs (all optional except `bump_type`):
 | `use_uv` | `false` | Use `uv run bump-my-version` instead of pip (requires uv-managed project) |
 | `sync_lockfile` | `false` | Run `uv lock` after bump to keep `uv.lock` in sync |
 | `collect_scriv` | `false` | Run `scriv collect` to fold `changelog.d/` fragments before the signed commit |
+| `config_file` | `""` | bump-my-version config path for monorepos (e.g. `packages/core/pyproject.toml`); commands still run from the repo root |
+| `lockfile_dirs` | `"."` | Space-separated directories to `uv lock` in when `sync_lockfile` is on |
+
+The bump always runs with `--no-commit --no-tag`, whatever the caller's `[tool.bumpversion]` says: the signed commit is built from the working-tree diff, and tagging belongs to `tag-release.yml`.
 
 Outputs: `previous_version`, `current_version`, `branch`, `pr_url`.
 
