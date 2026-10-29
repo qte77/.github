@@ -52,7 +52,7 @@ jobs:
     uses: qte77/.github/.github/workflows/lint-md-links.yml@main
 ```
 
-The actions inside the workflow are SHA-pinned. The workflow's runtime config fetch (`.markdownlint.jsonc`, `lychee.toml`) tracks `main`, so lint rule updates propagate to all callers automatically. Override locally by committing a `.markdownlint.jsonc` or `lychee.toml` at the caller repo root.
+The actions inside the workflow are SHA-pinned. The workflow's runtime config fetch (`.markdownlint.jsonc`, `lychee.toml`) tracks `main`, so lint rule updates propagate to all callers automatically. Override locally by committing a markdownlint config (any filename markdownlint-cli2 discovers: `.markdownlint-cli2.{jsonc,yaml,cjs,mjs}` or `.markdownlint.{jsonc,json,yaml,yml,cjs,mjs}`) or a `lychee.toml` at the caller repo root.
 
 For stricter reproducibility, callers can pin the `uses:` ref to a SHA instead of `@main` (this is what `qte77/*` repos do internally — not a requirement for external callers):
 
