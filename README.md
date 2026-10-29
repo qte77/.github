@@ -40,6 +40,7 @@ Workflows downstream `qte77/*` repos can call directly. Configs (`.markdownlint.
 | Workflow | Purpose |
 |---|---|
 | `.github/workflows/lint-md-links.yml` | Markdown + link checking (markdownlint-cli2 + lychee) |
+| `.github/workflows/lint-actions.yml` | Workflow lint + security scan (actionlint + yamllint + zizmor) |
 | `.github/workflows/bump-version.yml` | Version bump → signed commit → PR (via `bump-my-version`) |
 | `.github/workflows/tag-release.yml` | Detect version bump in a file, create annotated git tag |
 | `.github/workflows/publish-release.yml` | Create GitHub Release from a changelog block |
