@@ -1,0 +1,63 @@
+---
+# Reusable workflow: lint and security-scan GitHub Actions workflows.
+# Tools: actionlint (workflow correctness + shellcheck on embedded scripts),
+# yamllint (YAML hygiene), zizmor (GitHub Actions security scanner).
+#
+# CALLER PERMISSIONS REQUIRED:
+#   permissions:
+#     contents: read
+#
+# Caller usage:
+#   jobs:
+#     lint-actions:
+#       uses: qte77/.github/.github/workflows/lint-actions.yml@main
+name: Lint Actions
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint and security-scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xzC /usr/local/bin actionlint
+          actionlint --version
+
+      - name: Install yamllint and zizmor
+        run: pip install --quiet "yamllint==1.38.0" "zizmor==1.26.1"
+
+      # No file arguments: actionlint discovers both *.yml and *.yaml under .github/workflows/
+      - name: "actionlint (includes shellcheck on embedded run: scripts)"
+        run: actionlint
+
+      - name: yamllint
+        run: |
+          yamllint -d '{
+            extends: default,
+            rules: {
+              line-length: {max: 120, level: warning},
+              truthy: {allowed-values: ["true", "false"], check-keys: false}
+            }
+          }' .github/workflows/
+
+      - name: zizmor
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: zizmor --format github .github/workflows/
