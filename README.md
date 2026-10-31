@@ -63,7 +63,7 @@ uses: qte77/.github/.github/workflows/lint-md-links.yml@<SHA>  # bump on .github
 
 ### Scheduled monitoring (opt-in)
 
-The reusable workflow accepts a `notify_on_failure` input. Use a **single caller file** that handles PR-blocking and cron monitoring together — `notify_on_failure` derives from the trigger so an issue is only created on scheduled failures, never on PR failures:
+The reusable workflow accepts a `notify_on_failure` input. Use a **single caller file** that handles PR-blocking and cron monitoring together — `notify_on_failure` derives from the trigger so an issue is only created on scheduled failures, never on PR failures. Repeated failures comment on the one open `report`+`automated` issue for that ref instead of opening a new one, and the next green scheduled run closes it:
 
 ```yaml
 name: Lint MD and Links

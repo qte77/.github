@@ -6,7 +6,9 @@
 #     contents: read
 #     issues:   write   # required at workflow startup; see note below
 #
-# The `notify` job declares `permissions: issues: write` unconditionally.
+# The `notify` job keeps one open `report`+`automated` issue per ref while
+# runs fail and closes it on the next green run. It declares
+# `permissions: issues: write` unconditionally.
 # GitHub validates ALL reusable-job permissions at workflow startup, BEFORE
 # evaluating `if:` expressions — so callers must grant `issues: write` even
 # when `notify_on_failure: false` (the default). Omitting it yields
@@ -73,23 +75,50 @@ jobs:
 
   notify:
     needs: [markdown, links]
-    # Skipped at runtime when notify_on_failure is false (the default), but
-    # the `permissions: issues: write` declaration below is still validated
-    # at startup — callers must grant it regardless. See workflow header.
-    if: failure() && inputs.notify_on_failure
+    # Runs after every opted-in run (not only failures) so a green run can
+    # close the open report. Skipped at runtime when notify_on_failure is
+    # false (the default), but the `permissions: issues: write` declaration
+    # below is still validated at startup — callers must grant it regardless.
+    # See workflow header.
+    if: always() && inputs.notify_on_failure
     runs-on: ubuntu-latest
     permissions:
       issues: write
     steps:
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
         with:
           script: |
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `Lint MD and Links: failure on ${context.ref}`,
-              body: `One or more lint jobs failed.\n\nRun: ${runUrl}`,
-              labels: ['report', 'automated']
+            // One open labelled issue per ref: comment on it while failing,
+            // close it on the next green run. Cancelled runs change nothing.
+            const results = process.env.RESULTS.split(' ');
+            if (results.includes('cancelled')) return;
+            const failed = results.includes('failure');
+            const { owner, repo } = context.repo;
+            const title = `Lint MD and Links: failure on ${context.ref}`;
+            const labels = ['report', 'automated'];
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'open', labels: labels.join(','), per_page: 100,
             });
-...
+            const existing = open.find((i) => i.title === title && !i.pull_request);
+            if (failed && existing) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: existing.number,
+                body: `Still failing.\n\nRun: ${runUrl}`,
+              });
+            } else if (failed) {
+              await github.rest.issues.create({
+                owner, repo, title, labels,
+                body: `One or more lint jobs failed.\n\nRun: ${runUrl}`,
+              });
+            } else if (existing) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: existing.number,
+                body: `Green again, closing.\n\nRun: ${runUrl}`,
+              });
+              await github.rest.issues.update({
+                owner, repo, issue_number: existing.number, state: 'closed', state_reason: 'completed',
+              });
+            }
