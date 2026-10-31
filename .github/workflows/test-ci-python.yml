@@ -1,0 +1,23 @@
+---
+# Self-test for the ci-python.yml reusable: call it the way a consumer would,
+# against the minimal uv project in tests/ci-python/.
+name: Test CI Python Reusable
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/ci-python.yml"
+      - ".github/workflows/test-ci-python.yml"
+      - "tests/ci-python/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci-python.yml
+    with:
+      python_versions: '["3.11", "3.12"]'
+      working_directory: tests/ci-python

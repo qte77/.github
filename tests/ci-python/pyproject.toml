@@ -1,0 +1,15 @@
+# Minimal uv project the ci-python.yml self-test runs against.
+[project]
+name = "ci-python-fixture"
+version = "0.0.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.17.0",
+]
+
+[tool.uv]
+package = false

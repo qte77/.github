@@ -1,0 +1,89 @@
+---
+name: CI Python
+
+# Reusable: lint + test a uv project against its committed uv.lock. Every
+# uv call runs with --locked, so CI fails when uv.lock is missing or out of
+# date with pyproject.toml instead of silently re-resolving on the runner
+# (--frozen would install the stale lock without complaint). See #37.
+#
+# The caller's dev dependency group must provide ruff and pytest (or turn the
+# matching job off). Thin caller, e.g.:
+#
+#   on:
+#     pull_request:
+#       branches: [main]
+#   permissions:
+#     contents: read
+#   jobs:
+#     ci:
+#       uses: qte77/.github/.github/workflows/ci-python.yml@main
+#       with:
+#         python_versions: '["3.11", "3.12"]'
+
+on:
+  workflow_call:
+    inputs:
+      python_versions:
+        description: "JSON list of Python versions for the test matrix"
+        required: false
+        type: string
+        default: '["3.12"]'
+      working_directory:
+        description: "Directory containing pyproject.toml and uv.lock"
+        required: false
+        type: string
+        default: "."
+      ruff:
+        description: "Run ruff check + ruff format --check"
+        required: false
+        type: boolean
+        default: true
+      pytest:
+        description: "Run pytest"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    if: inputs.ruff
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          working-directory: ${{ inputs.working_directory }}
+      - run: uv sync --locked
+      - run: uv run --locked ruff check .
+      - run: uv run --locked ruff format --check .
+
+  test:
+    name: Test (py${{ matrix.python-version }})
+    if: inputs.pytest
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(inputs.python_versions) }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          working-directory: ${{ inputs.working_directory }}
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked
+      - run: uv run --locked pytest
