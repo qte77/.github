@@ -14,6 +14,8 @@ Thanks for considering a contribution.
 - Write a clear description: what changed and why
 - Reference related issues (`Closes #123`)
 - Ensure CI passes before requesting review
+- **Working on a tool you're adding or writing about?** Great, we'd love your input. Just mention in the PR if you work for, or are paid by, the vendor. Please keep existing docs and defaults neutral: don't retitle or rewrite them around a single tool, or make it the default. Proposing it as an option is welcome. When we adopt an idea, a maintainer writes it up in the repo's own words and credits your PR or issue by link.
+- **Signed commits, please.** `main` only accepts signed commits, so a branch with unsigned ones can't be merged. GitHub's guide to [signing commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits) shows how.
 
 > **Templates & the CLI:** PR, issue, and discussion templates auto-populate
 > only in the web UI — `gh`/the REST API won't pull these owner-level defaults.
