@@ -20,3 +20,6 @@
 - [ ] Docs updated where applicable
 - [ ] CI passes locally
 - [ ] Self-reviewed the diff
+
+<!-- Sections only: an H1 here would be copied into every PR body -->
+<!-- markdownlint-disable-file MD041 -->
