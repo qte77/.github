@@ -60,6 +60,18 @@ on:
         required: false
         type: string
         default: "."
+      # --- GitHub App token opt-in (default off; GITHUB_TOKEN stays the fallback) ---
+      app_client_id:
+        # Reason: events made with GITHUB_TOKEN start no workflow runs, so a bump PR
+        # opened with it gets no CI; an App installation token does not have that limit.
+        description: "GitHub App client ID; with app_private_key, commit and PR use an App token"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      app_private_key:
+        description: "Private key of the app_client_id App (contents + pull-requests write)"
+        required: false
     outputs:
       previous_version:
         description: "Version before bump"
@@ -165,10 +177,21 @@ jobs:
             echo "no changelog fragments to collect"
           fi
 
+      - name: Mint GitHub App token (opt-in)
+        id: app
+        if: inputs.app_client_id != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
+        with:
+          client-id: ${{ inputs.app_client_id }}
+          private-key: ${{ secrets.app_private_key }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Signed commit and push branch
         id: commit
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Reason: an App token makes the PR start CI; GITHUB_TOKEN is the default.
+          GH_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
           PREV: ${{ steps.bump.outputs.previous_version }}
           CURR: ${{ steps.bump.outputs.current_version }}
           BRANCH_PREFIX: ${{ inputs.branch_prefix }}
@@ -238,7 +261,7 @@ jobs:
         id: pr
         if: inputs.open_pr == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
           PREV: ${{ steps.bump.outputs.previous_version }}
           CURR: ${{ steps.bump.outputs.current_version }}
           BRANCH: ${{ steps.commit.outputs.branch }}
@@ -260,7 +283,7 @@ jobs:
         # failure permanently burns the version number. See qte77/.github#23.
         if: failure() || cancelled()
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
           BRANCH_PREFIX: ${{ inputs.branch_prefix }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |

@@ -14,6 +14,19 @@ name: Tag Release
 #       permissions:
 #         contents: write
 #
+# To publish the GitHub Release in the same run, chain publish-release.yml on
+# the `tag` output. A tag pushed with GITHUB_TOKEN starts no `on: push: tags`
+# workflow, so chaining jobs is how the release follows the tag:
+#
+#     publish:
+#       needs: tag
+#       if: needs.tag.outputs.tag != ''
+#       uses: qte77/.github/.github/workflows/publish-release.yml@main
+#       permissions:
+#         contents: write
+#       with:
+#         tag: ${{ needs.tag.outputs.tag }}
+#
 # Idempotency / never-delete: exits 0 when the version hasn't changed, exits 1
 # when the tag already exists (never deletes on failure). See qte77/.github#23.
 
@@ -35,6 +48,10 @@ on:
         required: false
         type: string
         default: '^version = "(.*)"'
+    outputs:
+      tag:
+        description: "Tag created by this run (empty when the version did not change)"
+        value: ${{ jobs.tag.outputs.tag }}
 
 permissions:
   contents: read  # elevated per-job below
@@ -44,6 +61,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      tag: ${{ steps.push.outputs.tag }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
@@ -70,6 +89,7 @@ jobs:
           echo "bumped=true" >> "$GITHUB_OUTPUT"
 
       - name: Create + push annotated tag
+        id: push
         if: steps.detect.outputs.bumped == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -89,3 +109,4 @@ jobs:
           git push \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
             "${TAG}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"

@@ -171,6 +171,9 @@ Inputs (all optional except `bump_type`):
 | `collect_scriv` | `false` | Run `scriv collect` to fold `changelog.d/` fragments before the signed commit |
 | `config_file` | `""` | bump-my-version config path for monorepos (e.g. `packages/core/pyproject.toml`); commands still run from the repo root |
 | `lockfile_dirs` | `"."` | Space-separated directories to `uv lock` in when `sync_lockfile` is on |
+| `app_client_id` | `""` | GitHub App client ID. With the `app_private_key` secret, the bump commit and PR use an App installation token, so the PR's `pull_request` CI runs (events made with `GITHUB_TOKEN` start no workflow runs). Unset keeps `GITHUB_TOKEN` |
+
+Secrets (optional): `app_private_key`, the private key of the App named by `app_client_id`. The App needs contents and pull-requests write and must be installed on the caller repo. Pass it explicitly, e.g. `secrets: { app_private_key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }} }` with `app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}`.
 
 The bump always runs with `--no-commit --no-tag`, whatever the caller's `[tool.bumpversion]` says: the signed commit is built from the working-tree diff, and tagging belongs to `tag-release.yml`.
 
@@ -194,6 +197,8 @@ Inputs:
 | `tag_prefix` | string | `v` | Prefix prepended to the version number |
 | `version_regex` | string | `^version = "(.*)"` | Extended regex with one capture group for the version |
 
+Outputs: `tag`, the tag this run created (empty when the version did not change). Chain `publish-release.yml` on it to publish the Release in the same run (example below); a separate `on: push: tags` workflow would not start, because the tag is pushed with `GITHUB_TOKEN`.
+
 Minimal thin caller — put this in the consumer repo's `.github/workflows/`:
 
 ```yaml
@@ -209,13 +214,22 @@ jobs:
     uses: qte77/.github/.github/workflows/tag-release.yml@main
     permissions:
       contents: write
+  # Optional: publish the Release right after the tag.
+  publish:
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    uses: qte77/.github/.github/workflows/publish-release.yml@main
+    permissions:
+      contents: write
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
 ```
 
 Pin `@main` to `@<SHA>` for stricter reproducibility (see [Keeping caller SHA pins fresh](#keeping-caller-sha-pins-fresh)).
 
 ### Publish release
 
-`publish-release.yml` creates a GitHub Release for an existing tag, extracting notes from the `## [version]` block of the changelog. Falls back to GitHub's auto-generated notes when the block is missing or empty. Intended as a manual-dispatch step after a tag has been created.
+`publish-release.yml` creates a GitHub Release for an existing tag, extracting notes from the `## [version]` block of the changelog. Falls back to GitHub's auto-generated notes when the block is missing or empty. Use it as a manual-dispatch step after a tag has been created, or chain it on `tag-release.yml`'s `tag` output (see above).
 
 **Permissions required:** `contents: write` (no `secrets: inherit` — uses default `GITHUB_TOKEN`).
 
