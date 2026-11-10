@@ -173,7 +173,15 @@ Inputs (all optional except `bump_type`):
 | `lockfile_dirs` | `"."` | Space-separated directories to `uv lock` in when `sync_lockfile` is on |
 | `app_client_id` | `""` | GitHub App client ID. With the `app_private_key` secret, the bump commit and PR use an App installation token, so the PR's `pull_request` CI runs (events made with `GITHUB_TOKEN` start no workflow runs). Unset keeps `GITHUB_TOKEN` |
 
-Secrets (optional): `app_private_key`, the private key of the App named by `app_client_id`. The App needs contents and pull-requests write and must be installed on the caller repo. Pass it explicitly, e.g. `secrets: { app_private_key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }} }` with `app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}`.
+Secrets (optional): `app_private_key`, the private key of the App named by `app_client_id`. The App needs contents and pull-requests write and must be installed on the caller repo. Pass both explicitly from the caller job:
+
+```yaml
+    with:
+      bump_type: ${{ inputs.bump_type }}
+      app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+    secrets:
+      app_private_key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+```
 
 The bump always runs with `--no-commit --no-tag`, whatever the caller's `[tool.bumpversion]` says: the signed commit is built from the working-tree diff, and tagging belongs to `tag-release.yml`.
 
