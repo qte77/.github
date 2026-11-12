@@ -41,9 +41,11 @@ Workflows downstream `qte77/*` repos can call directly. Configs (`.markdownlint.
 |---|---|
 | `.github/workflows/lint-md-links.yml` | Markdown + link checking (markdownlint-cli2 + lychee) |
 | `.github/workflows/lint-actions.yml` | Workflow lint + security scan (actionlint + yamllint + zizmor) |
+| `.github/workflows/ci-python.yml` | Lint (ruff) + test (pytest) a uv project against its committed `uv.lock` |
 | `.github/workflows/bump-version.yml` | Version bump → signed commit → PR (via `bump-my-version`) |
 | `.github/workflows/tag-release.yml` | Detect version bump in a file, create annotated git tag |
 | `.github/workflows/publish-release.yml` | Create GitHub Release from a changelog block |
+| `.github/workflows/svg-render.yml` | Render SVGs to PNGs (cairosvg) and upload as a build artifact |
 
 Caller usage:
 
