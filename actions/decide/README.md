@@ -11,6 +11,9 @@ ever auto-acting on an unreliable answer.
 Python standard library only — no runtime dependencies. Works on any GitHub
 Actions runner with `python3`.
 
+When to use the gate, which defaults to start from, and how to roll a new
+decision out (shadow first): see [CONVENTIONS.md](CONVENTIONS.md).
+
 ## Question schema
 
 Each question is a dict:
