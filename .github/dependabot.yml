@@ -1,0 +1,56 @@
+---
+# Dependabot configuration: keep every ecosystem in this repo on a weekly
+# update cadence, grouped so routine bumps land as one PR per group instead
+# of one per dependency.
+# Docs:
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# No `github-codeql-action` group: this repo does not run CodeQL (verified
+# via grep across workflows/actions/docs — no hits), so the pattern has
+# nothing to match.
+version: 2
+updates:
+  # Reusable workflows + the repo's own CI (.github/workflows/*).
+  # `directory: "/"` is the documented value for github-actions; Dependabot
+  # searches `/.github/workflows` plus `action.yml`/`action.yaml` at that
+  # root (this repo's composite action lives at actions/decide/action.yml
+  # and has no `uses:` steps, so there is nothing for this ecosystem to
+  # track there). No `workflow-templates/` directory exists in this repo.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions-security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      actions-version-updates:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Python, managed via uv: the repo root (github-decide, dependency-groups
+  # only, no committed uv.lock) and tests/ci-python (its own pyproject.toml
+  # + committed uv.lock, used as the ci-python.yml self-test fixture).
+  - package-ecosystem: "uv"
+    directories:
+      - "/"
+      - "/tests/ci-python"
+    schedule:
+      interval: "weekly"
+    groups:
+      uv-security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      uv-version-updates:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
