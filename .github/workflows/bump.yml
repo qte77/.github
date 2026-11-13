@@ -1,0 +1,31 @@
+---
+name: Bump Version
+
+# Thin caller: version-file bump + signed commit + PR, via this repo's own
+# bump-version.yml reusable workflow. The tag is created after merge by
+# release.yml; the GitHub Release follows in the same run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    uses: ./.github/workflows/bump-version.yml
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      bump_type: ${{ inputs.bump_type }}
+...

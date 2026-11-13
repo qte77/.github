@@ -1,0 +1,33 @@
+---
+name: Release
+
+# Thin caller: when a merged bump changes the version in pyproject.toml,
+# create the annotated v{version} tag and publish the GitHub Release in the
+# same run. Exits 0 when the version is unchanged; never deletes or
+# overwrites an existing tag or release.
+
+on:
+  push:
+    branches: [main]
+    paths: [pyproject.toml]
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    uses: ./.github/workflows/tag-release.yml
+    permissions:
+      contents: write
+  publish:
+    # Publish the Release in the same run: a tag pushed with GITHUB_TOKEN
+    # starts no `on: push: tags` workflow. Skipped when this push created no
+    # tag.
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    uses: ./.github/workflows/publish-release.yml
+    permissions:
+      contents: write
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+...
