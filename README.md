@@ -297,6 +297,15 @@ References:
 - [Keeping actions up to date with Dependabot](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/keeping-your-actions-up-to-date-with-dependabot)
 - [`dependabot.yml` configuration](https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file)
 
+### Releasing this repo
+
+This repo releases itself with the same three workflows, through two thin callers:
+
+1. Run **Bump Version** (`.github/workflows/bump.yml`, `workflow_dispatch`, input `bump_type`: `patch` / `minor` / `major`). It opens a bump PR for `pyproject.toml`; this needs the repo setting "Allow GitHub Actions to create and approve pull requests".
+2. Merge that PR. **Release** (`.github/workflows/release.yml`, on push to `main` touching `pyproject.toml`) tags `v<version>` and publishes the GitHub Release in the same run.
+
+There is no `CHANGELOG.md` here, so release notes are GitHub's generated notes. First release: `v0.1.1` (2026-11-13).
+
 ## Lint configs
 
 These templates pair with the reusable lint workflow above. Copy into a downstream repo to override the fallback fetched from `main`.
