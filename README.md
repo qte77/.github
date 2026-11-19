@@ -171,6 +171,7 @@ Inputs (all optional except `bump_type`):
 | `use_uv` | `false` | Use `uv run bump-my-version` instead of pip (requires uv-managed project) |
 | `sync_lockfile` | `false` | Run `uv lock` after bump to keep `uv.lock` in sync |
 | `collect_scriv` | `false` | Run `scriv collect` to fold `changelog.d/` fragments before the signed commit |
+| `scriv_pin` | `""` | With `collect_scriv`: run scriv through `uvx` at this version instead of `uv run scriv`, for repos with no uv project |
 | `config_file` | `""` | bump-my-version config path for monorepos (e.g. `packages/core/pyproject.toml`); commands still run from the repo root |
 | `lockfile_dirs` | `"."` | Space-separated directories to `uv lock` in when `sync_lockfile` is on |
 | `app_client_id` | `""` | GitHub App client ID. With the `app_private_key` secret, the bump commit and PR use an App installation token, so the PR's `pull_request` CI runs (events made with `GITHUB_TOKEN` start no workflow runs). Unset keeps `GITHUB_TOKEN` |

@@ -49,6 +49,13 @@ on:
         required: false
         type: boolean
         default: false
+      scriv_pin:
+        # Reason: repos with no uv project (no [project] table) can't `uv run scriv`;
+        # a pin runs scriv ephemerally through uvx instead.
+        description: "With collect_scriv: run scriv via uvx at this version (e.g. '1.8.0') instead of 'uv run scriv'; for repos with no uv project"
+        required: false
+        type: string
+        default: ""
       # --- monorepo opt-ins (defaults keep existing behaviour) ---
       config_file:
         description: "bump-my-version config file relative to the repo root (default: auto-discovery)"
@@ -169,10 +176,16 @@ jobs:
         if: inputs.collect_scriv
         env:
           NEW_VERSION: ${{ steps.bump.outputs.current_version }}
+          SCRIV_PIN: ${{ inputs.scriv_pin }}
         run: |
           set -euo pipefail
+          if [ -n "$SCRIV_PIN" ]; then
+            scriv=(uvx --from "scriv[toml]==$SCRIV_PIN" scriv)
+          else
+            scriv=(uv run scriv)
+          fi
           if ls changelog.d/*.md >/dev/null 2>&1; then
-            uv run scriv collect --version "$NEW_VERSION"
+            "${scriv[@]}" collect --version "$NEW_VERSION"
           else
             echo "no changelog fragments to collect"
           fi
