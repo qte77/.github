@@ -52,12 +52,22 @@ jobs:
           persist-credentials: false
       - name: Fall back to shared markdownlint config
         run: |
-          # Every config filename markdownlint-cli2 discovers (see its README "Configuration")
-          for f in .markdownlint-cli2.jsonc .markdownlint-cli2.yaml .markdownlint-cli2.cjs .markdownlint-cli2.mjs \
-                   .markdownlint.jsonc .markdownlint.json .markdownlint.yaml .markdownlint.yml \
-                   .markdownlint.cjs .markdownlint.mjs; do
+          # Keep the repo's own rules when it has any (filenames per markdownlint-cli2's
+          # README "Configuration"). A rules file always counts; a script cli2 config
+          # (.cjs/.mjs) cannot be inspected, so it counts too.
+          for f in .markdownlint.jsonc .markdownlint.json .markdownlint.yaml .markdownlint.yml \
+                   .markdownlint.cjs .markdownlint.mjs .markdownlint-cli2.cjs .markdownlint-cli2.mjs; do
             if [ -f "$f" ]; then exit 0; fi
           done
+          # A JSONC/YAML cli2 config counts if it mentions a "config" key (a text check;
+          # when unsure it keeps the repo's setup). One that only scopes files (globs,
+          # ignores) gets the shared rules below: cli2 applies .markdownlint.jsonc when
+          # its own config has no "config". cli2 reads the yaml only without a jsonc.
+          if [ -f .markdownlint-cli2.jsonc ]; then
+            if sed -E '/^[[:space:]]*\/\//d' .markdownlint-cli2.jsonc | tr '\r\n' '  ' | grep -Eq '"config"[[:space:]]*:'; then exit 0; fi
+          elif [ -f .markdownlint-cli2.yaml ]; then
+            if grep -Eq "^[[:space:]]*[\"']?config[\"']?[[:space:]]*:|^[[:space:]]*\{" .markdownlint-cli2.yaml; then exit 0; fi
+          fi
           curl -fsSL https://raw.githubusercontent.com/qte77/.github/main/.markdownlint.jsonc -o .markdownlint.jsonc
       - uses: DavidAnson/markdownlint-cli2-action@696eb3f2509270d7b882d2aa68347bc676e7af34  # v25.0.0
         with:
