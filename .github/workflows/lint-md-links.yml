@@ -59,11 +59,15 @@ jobs:
                    .markdownlint.cjs .markdownlint.mjs .markdownlint-cli2.cjs .markdownlint-cli2.mjs; do
             if [ -f "$f" ]; then exit 0; fi
           done
-          # A JSONC/YAML cli2 config counts only if it sets rules (a top-level "config"
-          # key). One that only scopes files (globs, ignores) gets the shared rules
-          # below: cli2 applies .markdownlint.jsonc when its own config has no "config".
-          if [ -f .markdownlint-cli2.jsonc ] && sed 's#//.*##' .markdownlint-cli2.jsonc | grep -Eq '"config"[[:space:]]*:'; then exit 0; fi
-          if [ -f .markdownlint-cli2.yaml ] && grep -Eq '^config:' .markdownlint-cli2.yaml; then exit 0; fi
+          # A JSONC/YAML cli2 config counts if it mentions a "config" key (a text check;
+          # when unsure it keeps the repo's setup). One that only scopes files (globs,
+          # ignores) gets the shared rules below: cli2 applies .markdownlint.jsonc when
+          # its own config has no "config". cli2 reads the yaml only without a jsonc.
+          if [ -f .markdownlint-cli2.jsonc ]; then
+            if sed -E '/^[[:space:]]*\/\//d' .markdownlint-cli2.jsonc | tr '\r\n' '  ' | grep -Eq '"config"[[:space:]]*:'; then exit 0; fi
+          elif [ -f .markdownlint-cli2.yaml ]; then
+            if grep -Eq "^[[:space:]]*[\"']?config[\"']?[[:space:]]*:|^[[:space:]]*\{" .markdownlint-cli2.yaml; then exit 0; fi
+          fi
           curl -fsSL https://raw.githubusercontent.com/qte77/.github/main/.markdownlint.jsonc -o .markdownlint.jsonc
       - uses: DavidAnson/markdownlint-cli2-action@696eb3f2509270d7b882d2aa68347bc676e7af34  # v25.0.0
         with:
