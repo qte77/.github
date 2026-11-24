@@ -3,3 +3,9 @@
 
 # Accept common bot-blocking and rate-limiting status codes as success
 accept = [200, 202, 204, 301, 401, 403, 429]
+
+# Retry transient failures before declaring a link dead: github.com blob pages
+# sometimes answer 503 even to an authenticated lychee (seen 2026-11-24). A real
+# 503 still fails once the retries run out.
+max_retries = 4
+retry_wait_time = 5
