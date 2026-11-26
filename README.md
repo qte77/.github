@@ -236,7 +236,7 @@ jobs:
       tag: ${{ needs.tag.outputs.tag }}
 ```
 
-Pin `@main` to `@<SHA>` for stricter reproducibility (see [Keeping caller SHA pins fresh](#keeping-caller-sha-pins-fresh)).
+Pin `@main` to the release tag's commit (`@<SHA>  # vX.Y.Z`) for stricter reproducibility (see [Keeping caller SHA pins fresh](#keeping-caller-sha-pins-fresh)).
 
 ### Publish release
 
@@ -278,7 +278,14 @@ jobs:
 
 ### Keeping caller SHA pins fresh
 
-Each caller pins `uses:` to a specific `qte77/.github` commit. To get notified about updates without manual SHA chasing, enable Dependabot for GitHub Actions in the caller repo (`.github/dependabot.yml`):
+Callers pin `uses:` to a full commit SHA. The `qte77/*` repos use two pin forms:
+
+| Workflows | Pin form | How the pin moves |
+|---|---|---|
+| `bump-version.yml`, `tag-release.yml`, `publish-release.yml`, `lint-actions.yml` | the release tag's commit: `@<SHA>  # vX.Y.Z` | Dependabot opens a bump PR when a newer release tag is cut, rewriting the SHA and the comment. Seen when `v0.1.2` was cut: [qte77/gha-rxiv-paper-eval#127](https://github.com/qte77/gha-rxiv-paper-eval/pull/127) and [qte77/gha-rxiv-feed-action#262](https://github.com/qte77/gha-rxiv-feed-action/pull/262) moved `# v0.1.1` to `# v0.1.2`. |
+| `lint-md-links.yml` | a `main` commit with a date comment: `@<SHA>  # main <date>` | Tracks `main` on purpose. **Unverified:** Dependabot bumps of these pins are mixed across the estate (some repos got a PR, many stayed on an April commit), so check the pin by hand after a lint change lands ([#18](https://github.com/qte77/.github/issues/18)). |
+
+Both forms need Dependabot for GitHub Actions enabled in the caller repo (`.github/dependabot.yml`):
 
 ```yaml
 version: 2
@@ -289,7 +296,7 @@ updates:
       interval: "weekly"
 ```
 
-Dependabot opens a PR whenever a newer commit lands on `qte77/.github` `main`, so each caller pulls updates on its own cadence. No central fan-out, no `repository_dispatch`, no scripted bumps — decentralized propagation.
+Each caller pulls updates on its own cadence. No central fan-out, no `repository_dispatch`, no scripted bumps.
 
 References:
 
