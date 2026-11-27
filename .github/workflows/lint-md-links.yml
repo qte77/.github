@@ -69,7 +69,7 @@ jobs:
             if grep -Eq "^[[:space:]]*[\"']?config[\"']?[[:space:]]*:|^[[:space:]]*\{" .markdownlint-cli2.yaml; then exit 0; fi
           fi
           curl -fsSL https://raw.githubusercontent.com/qte77/.github/main/.markdownlint.jsonc -o .markdownlint.jsonc
-      - uses: DavidAnson/markdownlint-cli2-action@696eb3f2509270d7b882d2aa68347bc676e7af34  # v25.0.0
+      - uses: DavidAnson/markdownlint-cli2-action@3ce8f712b5d8f31acd8e201be6d97e3d2bb23eb7  # v25.1.0
         with:
           # `inputs` is empty on direct push/PR runs, hence the fallback
           globs: ${{ inputs.globs || '**/*.{md,markdown}' }}
